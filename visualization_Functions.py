@@ -308,3 +308,54 @@ def rotate_once(patch_arr,shape_arr,linelist,hinge_vec,hingechoice, hinge_loc, a
     return patch_arr,shape_arr,hinge_vec
 
 
+def initialize_energy(magvec):
+    '''This function initializes a series fo matrices that help to reduce computational expense of later code. This is necessary for the
+        magentic energy calculation performed at each step of the MC simulation. This initialized energy already acounts for the magentization
+        values of the patches
+    #Inputs:
+        magvec: a vector contianing the magnetic moments/length of each point at the end of a patch. This should be input manually or scaled based on SQUID data (A*m)
+    Outputs:
+        #mask_arr: An special nxn upper diagonal matrix of 0's, 1's, and -1's useful for the energy calculation. n is 2x number of shapes
+        #v_xmat: An nx2 array of 1's
+        #h_xmat: A 2xn array of -1's
+        #v_ymat: An nx2 array of 1's
+        #h_ymat: A 2xn array of -1's
+        #Ml_mat: An nxn array that contains combinations of magnetizations and lengths
+    '''
+
+    n = len(magvec) #Determine the number of points (n)
+    mask_arr = np.ones((n, n)) #Initialize mask_arr with ones
+
+    M0 = (4*np.pi)*10**(-7) #J*m #magnetic constant
+    constant = M0/(4*np.pi) #J*m #divide magentic constant by 4pi
+    
+    #Perform matrix multiplication to obtain multiplication between every possible point combination. Additionaly, multiply constant
+    #Ml[:,None] essential to perform matrix multiplication because Ml is 1D
+    Ml_mat = np.matmul(magvec[:,None],magvec[None,:])*constant #M1_mat is an array that describes the M/L combo for each pairwise interaction
+
+    #Turn mask-arr into one that alternates between 1 and negative 1
+    for i in range(n):
+            for l in range(n):
+                if (i+l) % 2 != 0:
+                    mask_arr[i,l] *= -1
+
+    #mask array must be a special upper diagnonal matrix. entries below the diagonal are ommitted because they're the negative of the upper. entries on the diagonal are
+    #ommitted because they would be a point interacting with itself. entries one above the diagonal describe a point on one line interacting with a point on the same line and
+    #must be ommitted
+    k = 0 #Initialize counter
+    for i in range(n): #columns
+        #Every two rows, k increases by 2 such that the ommitted values are shifted down by two rows
+        for j in range(k,n):
+            mask_arr[j,i] = 0 #Replace unwanted entry with a zero
+        if i>0 and i%2 != 0: #Increment k counter
+            k+=2
+
+    #Create horizontal and vertical matrices needed to subtract each x point from another using matrix math
+    #Each vertical array will have its [:,0] entry as x or y-values. Every horizontal array will have its [1,:] entry as x or y values. Through matrix multiplication, this will
+    #create an array with each entry as one point subtracted from another
+    v_xmat = np.ones((n,2))
+    h_xmat = np.ones((2,n))*-1
+    v_ymat = np.ones((n,2))
+    h_ymat = np.ones((2,n))*-1
+            
+    return mask_arr, v_xmat, h_xmat, v_ymat, h_ymat, Ml_mat
