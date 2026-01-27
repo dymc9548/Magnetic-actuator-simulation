@@ -181,6 +181,27 @@ def count_shapes(shape_arr):
     return polycount
 
 
+def check_overlap(shape_arr, polycount):
+    '''This function checks if any structures overlap each other
+    Inputs:
+        shape_arr: 2x(2n*s) array of x and y points that describe the lines enclosing each shape. n is number of shapes. s is number of sides on that shape
+        polycount: Number of shapes calculated
+                  
+    Outputs:
+        Boolean value
+            True for overlap
+            False for no overlap
+    '''
+
+    #use shapely library to create a LineString object. This object can be truned into a unary_union which can be turned into separate polygons using shapely.ops polygonize
+    polygons = list(polygonize(sp.unary_union(sp.LineString(shape_arr.T)))) #Create list of shapely polygons
+
+    if len(polygons)!= polycount: #If there are more polygons created that the number of shapes we are using, the shapes must be overlapping
+        return True #Overlap
+    else:
+        return False #No overlap
+
+
 def translate_to_origin(patch_arr_init, shape_arr_init, hinge_loc, hingechoice):
     '''function translates first point of shape to the right of the hinge to the origin. Necessary for simple rotation
     Inputs:
@@ -204,7 +225,6 @@ def translate_to_origin(patch_arr_init, shape_arr_init, hinge_loc, hingechoice):
     
     return patch_arr,shape_arr  
 
-#######################################  
 
 def rotate(patch_arr_init, shape_arr_init, linelist, hinge_vec_init, hingechoice, angle, patch_num):
     '''This function rotates a structure. All points to the right of the origin are rotated by multiplying by teh rotation matrix
@@ -288,4 +308,3 @@ def rotate_once(patch_arr,shape_arr,linelist,hinge_vec,hingechoice, hinge_loc, a
     return patch_arr,shape_arr,hinge_vec
 
 
-# test commit
