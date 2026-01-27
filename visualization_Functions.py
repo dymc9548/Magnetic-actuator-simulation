@@ -286,3 +286,6 @@ def rotate_once(patch_arr,shape_arr,linelist,hinge_vec,hingechoice, hinge_loc, a
     patch_arr,shape_arr = translate_back(patch_arr,shape_arr) #translate structure back
     
     return patch_arr,shape_arr,hinge_vec
+
+
+# test commit
