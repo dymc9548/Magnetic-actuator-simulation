@@ -359,3 +359,44 @@ def initialize_energy(magvec):
     h_ymat = np.ones((2,n))*-1
             
     return mask_arr, v_xmat, h_xmat, v_ymat, h_ymat, Ml_mat
+
+
+def energy_math(patch_arr,mask_arr, v_xmat, h_xmat, v_ymat, h_ymat,Ml_mat):
+    '''This function calculates the total interdipolar energy of the system
+    Inputs:
+        patch_arr_init: 2x(2n) array of x and y points that describe the lines of the magentic patch. n is number of distinct magnetic domains
+        mask_arr: An special nxn upper diagonal matrix of 0's, 1's, and -1's useful for the energy calculation. n is 2x number of shapes
+        v_xmat: An nx2 array of 1's
+        h_xmat: A 2xn array of -1's
+        v_ymat: An nx2 array of 1's
+        h_ymat: A 2xn array of -1's
+        Ml_mat: An nxn array that contains combinations of magnetizations and lengths
+    #Outputs:
+        #E: total energy of the system
+    '''
+    #Create a deepcopy of line_arr to prevent line_arr from being modified during the vector operations in this function
+    patch_arr = copy.deepcopy(patch_arr)
+    
+    v_xmat[:,0] = patch_arr[0,:] #replace first column with x-values
+    h_xmat[1,:] = patch_arr[0,:] #replace second row with x-values
+    xmat = np.matmul(v_xmat,h_xmat)*1e-6 #perform matrix multiplication to obtain each x-value subtracted from another. Multiply by 1e-6 to dimensionalize
+    xmat_upper = np.multiply(xmat,mask_arr) #Multiply by the mask array to obtain the special upper diagnonal matrix and gain -1/1 pattern (this pattern is removed when squaring
+                                            #and with have to be reinstated later)
+    x_square = np.square(xmat_upper) #square all values. note that squaring removes -1/1 pattern
+    
+    v_ymat[:,0] = patch_arr[1,:] #replace first column with y-values
+    h_ymat[1,:] = patch_arr[1,:] #replace second row with y-values
+    ymat = np.dot(v_ymat,h_ymat) #perform matrix multiplication to obtain each y-value subtracted from another. Multiply by 1e-6 to dimensionalize
+    ymat_upper = np.multiply(ymat,mask_arr)*1e-6 #Multiply by the mask array to obtain the special upper diagnonal matrix and gain -1/1 pattern (this pattern is removed when squaring
+                                            #and with have to be reinstated later)
+    y_square = np.square(ymat_upper ) #square all values. note that squaring removes -1/1 pattern
+    
+    final_mat = np.multiply(np.sqrt(x_square + y_square),mask_arr) #add the squares of x and y values and take the square root. Then multiply this element-wise by mask_arr
+                                                                   #to reinstate -1/1 pattern
+    indices = np.nonzero(final_mat) #Determine the indices of all nonzero values to allow for taking the reciprocal
+    vec = np.multiply(Ml_mat[indices],np.reciprocal(final_mat[indices])) #multiply piecewise the nonzero values of the inverse of the magnitude matrix with corresponding values of the 
+                                                                         #M/L combination matrix
+  
+    E = np.sum(vec) #Sum all values to determine the total interaction energy
+    
+    return E
