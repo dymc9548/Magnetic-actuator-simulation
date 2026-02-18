@@ -202,7 +202,7 @@ def check_overlap(shape_arr, polycount):
         return False #No overlap
 
 
-def translate_to_origin(patch_arr_init, shape_arr_init, hinge_loc, hingechoice):
+def translate_to_origin(patch_arr_init, shape_arr_init, hinge_loc_init, hingechoice):
     '''function translates first point of shape to the right of the hinge to the origin. Necessary for simple rotation
     Inputs:
         patch_arr_init: 2x(2n) array of x and y points that describe the lines of the magentic patches. n is number of patches
@@ -217,16 +217,18 @@ def translate_to_origin(patch_arr_init, shape_arr_init, hinge_loc, hingechoice):
     #Create a deepcopy of both arrays (necessary to prevent modifying original when performing trial runs in Monte Carlo)
     patch_arr = copy.deepcopy(patch_arr_init)
     shape_arr = copy.deepcopy(shape_arr_init)
+    hinge_loc = copy.deepcopy(hinge_loc_init)
 
-    xy_trans = hinge_loc[:,hingechoice][:,None] #Determine how far to translate each shape in order to place first point past hinge on the origin
+    xy_trans = hinge_loc_init[:,hingechoice][:,None] #Determine how far to translate each shape in order to place first point past hinge on the origin
 
     patch_arr -= xy_trans #translate line_arr
     shape_arr -= xy_trans #translate shape_arr
+    hinge_loc -= xy_trans #translate hinge_loc
     
-    return patch_arr,shape_arr  
+    return patch_arr,shape_arr,hinge_loc
 
 
-def rotate(patch_arr_init, shape_arr_init, linelist, hinge_vec_init, hingechoice, angle, patch_num):
+def rotate(patch_arr_init, shape_arr_init, linelist, hinge_vec_init, hinge_loc_init, hingechoice, angle, patch_num):
     '''This function rotates a structure. All points to the right of the origin are rotated by multiplying by teh rotation matrix
     Inputs:
         patch_arr_init: 2x(2n) array of x and y points that describe the lines of the magentic patch. n is number of shapes
@@ -244,7 +246,8 @@ def rotate(patch_arr_init, shape_arr_init, linelist, hinge_vec_init, hingechoice
     hinge_vec = copy.deepcopy(hinge_vec_init)
     patch_arr = copy.deepcopy(patch_arr_init)
     shape_arr = copy.deepcopy(shape_arr_init)
-    #Create a deepcopy of three arrays to be modified (necessary to prevent modifying original when performing trial runs in Monte Carlo)
+    hinge_loc = copy.deepcopy(hinge_loc_init)
+    #Create a deepcopy of four arrays to be modified (necessary to prevent modifying original when performing trial runs in Monte Carlo)
     hinge_vec[hingechoice] += angle #Modify hinge_vec by adding the angle
     
     angle = angle*np.pi/180 #convert angle to radians
@@ -259,11 +262,12 @@ def rotate(patch_arr_init, shape_arr_init, linelist, hinge_vec_init, hingechoice
     #rotate line and shape arrays using matrix multiplication. Matrix multiplication performed on all points to the right of the hinge. Indexing reflects position of hinge in arrays
     patch_arr[:,index:] = np.matmul(rotation_matrix,patch_arr[:,index:])
     shape_arr[:,np.sum(linelist[:hingechoice+1]*2):] = np.matmul(rotation_matrix,shape_arr[:,np.sum(linelist[:hingechoice+1]*2):])
-    
-    return patch_arr, shape_arr, hinge_vec
+    hinge_loc[:,hingechoice:] = np.matmul(rotation_matrix, hinge_loc[:,hingechoice:])
+
+    return patch_arr, shape_arr, hinge_vec, hinge_loc
 
 
-def translate_back(patch_arr_init,shape_arr_init):
+def translate_back(patch_arr_init,shape_arr_init,hinge_loc_init):
     '''This function translates any structure back to the reference position where the leftmost point of the first shape is located at the origin
     Inputs:
         patch_arr: 2x(2n) array of x and y points that describe the lines of the magentic patch. n is number of shapes
@@ -275,15 +279,17 @@ def translate_back(patch_arr_init,shape_arr_init):
 
     patch_arr = copy.deepcopy(patch_arr_init)
     shape_arr = copy.deepcopy(shape_arr_init)
-    #Create a deepcopy of both arrays (necessary to prevent modifying original when performing trial runs in Monte Carlo)
+    hinge_loc = copy.deepcopy(hinge_loc_init)
+    #Create a deepcopy of all three arrays (necessary to prevent modifying original when performing trial runs in Monte Carlo)
    
     xy_trans = np.array(([shape_arr[0,0]],[shape_arr[1,0]]))#Determine how far to translate each shape in order to place the first point of the first shape on the origin.
                                                           #This should be the negative of the location of the first point
    
     patch_arr -= xy_trans #translate line_arr by subtracting the value (subtracting a negative to make a positive)
     shape_arr -= xy_trans #translate shape_arr
+    hinge_loc -= xy_trans
     
-    return patch_arr,shape_arr
+    return patch_arr,shape_arr, hinge_loc
 
 def rotate_once(patch_arr,shape_arr,linelist,hinge_vec,hingechoice, hinge_loc, angle, patch_num):
     '''This function performs the translate,rotate,translate cycle all together and is important in later functions and for plotting or troubleshooting
@@ -301,11 +307,11 @@ def rotate_once(patch_arr,shape_arr,linelist,hinge_vec,hingechoice, hinge_loc, a
         new_hinge_vec: rotated hinge_vec
     '''
 
-    patch_arr, shape_arr = translate_to_origin(patch_arr, shape_arr, hinge_loc, hingechoice) #translate hinge to the origin
-    patch_arr, shape_arr, hinge_vec = rotate(patch_arr, shape_arr, linelist, hinge_vec, hingechoice, angle, patch_num) #rotate structure
-    patch_arr,shape_arr = translate_back(patch_arr,shape_arr) #translate structure back
+    patch_arr, shape_arr, hinge_loc = translate_to_origin(patch_arr, shape_arr, hinge_loc, hingechoice) #translate hinge to the origin
+    patch_arr, shape_arr, hinge_vec, hinge_loc = rotate(patch_arr, shape_arr, linelist, hinge_vec, hinge_loc, hingechoice, angle, patch_num) #rotate structure
+    patch_arr,shape_arr, hinge_loc = translate_back(patch_arr,shape_arr, hinge_loc) #translate structure back
     
-    return patch_arr,shape_arr,hinge_vec
+    return patch_arr,shape_arr,hinge_vec,hinge_loc
 
 
 def initialize_energy(magvec):
@@ -462,5 +468,7 @@ def simulate_greedyDescent(patch_arr_init,shape_arr_init,linelist,hinge_vec_init
         else: # no favorable moves
             print(f"Converged after {iteration} iterations.")
             break
+
+        shapeplots(shape_arr, linelist, mag_vecs = patch_arr)
 
     return patch_arr, shape_arr, hinge_vec, current_energy
