@@ -455,6 +455,8 @@ def simulate_greedyDescent(patch_arr_init,shape_arr_init,linelist,hinge_vec_init
                             steric_counter += 1 # increment test counter and move to the next angle reduction
                         else: # if no overlap now with a smaller angle
                             break
+                    if steric_counter == 10:
+                        continue
                 
                 trial_energy = energy_math(trial_patch, mask_arr, v_xmat, h_xmat, v_ymat, h_ymat, Ml_mat) # calc new energy
 
