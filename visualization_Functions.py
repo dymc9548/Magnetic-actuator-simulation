@@ -386,8 +386,8 @@ def energy_math(patch_arr,mask_arr, v_xmat, h_xmat, v_ymat, h_ymat,Ml_mat):
     
     v_ymat[:,0] = patch_arr[1,:] #replace first column with y-values
     h_ymat[1,:] = patch_arr[1,:] #replace second row with y-values
-    ymat = np.dot(v_ymat,h_ymat) #perform matrix multiplication to obtain each y-value subtracted from another. Multiply by 1e-6 to dimensionalize
-    ymat_upper = np.multiply(ymat,mask_arr)*1e-6 #Multiply by the mask array to obtain the special upper diagnonal matrix and gain -1/1 pattern (this pattern is removed when squaring
+    ymat = np.dot(v_ymat,h_ymat)*1e-6 #perform matrix multiplication to obtain each y-value subtracted from another. Multiply by 1e-6 to dimensionalize
+    ymat_upper = np.multiply(ymat,mask_arr) #Multiply by the mask array to obtain the special upper diagnonal matrix and gain -1/1 pattern (this pattern is removed when squaring
                                             #and with have to be reinstated later)
     y_square = np.square(ymat_upper ) #square all values. note that squaring removes -1/1 pattern
     
@@ -400,3 +400,67 @@ def energy_math(patch_arr,mask_arr, v_xmat, h_xmat, v_ymat, h_ymat,Ml_mat):
     E = np.sum(vec) #Sum all values to determine the total interaction energy
     
     return E
+
+
+def simulate_greedyDescent(patch_arr_init,shape_arr_init,linelist,hinge_vec_init, hinge_loc, std, patch_num, mask_arr, v_xmat, h_xmat, v_ymat, h_ymat, Ml_mat, max_iter, tol=0):
+    """
+    Simulate as follows: for each hinge, sample a random angle, then move the hinge by that angle in the favorable direction and calculate the energy change.
+    Accept the move with the largest negative energy change, then repeat.
+
+    Inputs:
+
+    Outputs:
+
+    """
+
+    # Deepcopy initial state
+    patch_arr = copy.deepcopy(patch_arr_init)
+    shape_arr = copy.deepcopy(shape_arr_init)
+    hinge_vec = copy.deepcopy(hinge_vec_init)
+
+    # calculate the pre-rotation energy and store number of hinges
+    current_energy = energy_math(patch_arr, mask_arr, v_xmat, h_xmat, v_ymat, h_ymat, Ml_mat)
+    num_hinges = len(hinge_vec)
+    polycount = count_shapes(shape_arr)
+
+    for iteration in range(max_iter): # for our iterations
+
+        # initialize variables to store the best moves
+        best_deltaE = 0
+        best_move = None
+
+        for h in range(num_hinges): # for each hinge
+        
+            angle_trial = np.random.normal(0,std) #pull a trial angle from the Gaussian distribution
+
+            for sign in [1,-1]: # test the angle in both directions
+                angle_trial = angle_trial*sign 
+                trial_patch, trial_shape, trial_hinge = rotate_once(patch_arr, shape_arr, linelist, hinge_vec, h, hinge_loc, angle_trial, patch_num) # rotate by the angle
+                overlap = check_overlap(trial_shape, polycount)
+
+                if overlap: #if the shapes overlap
+                    steric_counter = 0
+                    while steric_counter<10: # do ten attempts
+                        new_angle_trial = angle_trial/2 # reduce the tested angle by half
+                        trial_patch, trial_shape, trial_hinge = rotate_once(patch_arr, shape_arr, linelist, hinge_vec, h, hinge_loc, new_angle_trial, patch_num) #try rotating again
+                        overlap = check_overlap(trial_shape, polycount)
+                        if overlap: # if still overlapped
+                            steric_counter += 1 # increment test counter and move to the next angle reduction
+                        else: # if no overlap now with a smaller angle
+                            break
+                
+                trial_energy = energy_math(trial_patch, mask_arr, v_xmat, h_xmat, v_ymat, h_ymat, Ml_mat) # calc new energy
+
+                deltaE = trial_energy - current_energy # calculate the change in energy
+
+                if deltaE < best_deltaE: # if it's a more favorable move
+                    best_deltaE = deltaE # update best change in energy
+                    best_move = (trial_patch, trial_shape, trial_hinge, trial_energy) # store the best move arrays
+
+        if best_move is not None and best_deltaE < tol: # if there was a best move and the energy change was less than some defined minimum
+            patch_arr, shape_arr, hinge_vec, current_energy = best_move # update our stored "current" values
+        else: # no favorable moves
+            print(f"Converged after {iteration} iterations.")
+            break
+
+    return patch_arr, shape_arr, hinge_vec, current_energy
