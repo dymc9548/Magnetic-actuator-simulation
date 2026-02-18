@@ -408,7 +408,7 @@ def energy_math(patch_arr,mask_arr, v_xmat, h_xmat, v_ymat, h_ymat,Ml_mat):
     return E
 
 
-def simulate_greedyDescent(patch_arr_init,shape_arr_init,linelist,hinge_vec_init, hinge_loc, std, patch_num, mask_arr, v_xmat, h_xmat, v_ymat, h_ymat, Ml_mat, max_iter, tol=0):
+def simulate_greedyDescent(patch_arr_init,shape_arr_init,linelist,hinge_vec_init, hinge_loc_init, std, patch_num, mask_arr, v_xmat, h_xmat, v_ymat, h_ymat, Ml_mat, max_iter, tol=0):
     """
     Simulate as follows: for each hinge, sample a random angle, then move the hinge by that angle in the favorable direction and calculate the energy change.
     Accept the move with the largest negative energy change, then repeat.
@@ -423,6 +423,7 @@ def simulate_greedyDescent(patch_arr_init,shape_arr_init,linelist,hinge_vec_init
     patch_arr = copy.deepcopy(patch_arr_init)
     shape_arr = copy.deepcopy(shape_arr_init)
     hinge_vec = copy.deepcopy(hinge_vec_init)
+    hinge_loc = copy.deepcopy(hinge_loc_init)
 
     # calculate the pre-rotation energy and store number of hinges
     current_energy = energy_math(patch_arr, mask_arr, v_xmat, h_xmat, v_ymat, h_ymat, Ml_mat)
@@ -441,14 +442,14 @@ def simulate_greedyDescent(patch_arr_init,shape_arr_init,linelist,hinge_vec_init
 
             for sign in [1,-1]: # test the angle in both directions
                 angle_trial = angle_trial*sign 
-                trial_patch, trial_shape, trial_hinge = rotate_once(patch_arr, shape_arr, linelist, hinge_vec, h, hinge_loc, angle_trial, patch_num) # rotate by the angle
+                trial_patch, trial_shape, trial_hinge, trial_hingeloc = rotate_once(patch_arr, shape_arr, linelist, hinge_vec, h, hinge_loc, angle_trial, patch_num) # rotate by the angle
                 overlap = check_overlap(trial_shape, polycount)
 
                 if overlap: #if the shapes overlap
                     steric_counter = 0
                     while steric_counter<10: # do ten attempts
                         new_angle_trial = angle_trial/2 # reduce the tested angle by half
-                        trial_patch, trial_shape, trial_hinge = rotate_once(patch_arr, shape_arr, linelist, hinge_vec, h, hinge_loc, new_angle_trial, patch_num) #try rotating again
+                        trial_patch, trial_shape, trial_hinge, trial_hingeloc = rotate_once(patch_arr, shape_arr, linelist, hinge_vec, h, hinge_loc, new_angle_trial, patch_num) #try rotating again
                         overlap = check_overlap(trial_shape, polycount)
                         if overlap: # if still overlapped
                             steric_counter += 1 # increment test counter and move to the next angle reduction
@@ -461,14 +462,15 @@ def simulate_greedyDescent(patch_arr_init,shape_arr_init,linelist,hinge_vec_init
 
                 if deltaE < best_deltaE: # if it's a more favorable move
                     best_deltaE = deltaE # update best change in energy
-                    best_move = (trial_patch, trial_shape, trial_hinge, trial_energy) # store the best move arrays
+                    best_move = (trial_patch, trial_shape, trial_hinge, trial_hingeloc, trial_energy) # store the best move arrays
 
         if best_move is not None and best_deltaE < tol: # if there was a best move and the energy change was less than some defined minimum
-            patch_arr, shape_arr, hinge_vec, current_energy = best_move # update our stored "current" values
+            patch_arr, shape_arr, hinge_vec, hinge_loc, current_energy = best_move # update our stored "current" values
         else: # no favorable moves
             print(f"Converged after {iteration} iterations.")
             break
+        
+        # plot line for testing commented out typically
+        ### shapeplots(shape_arr, linelist, mag_vecs = patch_arr)
 
-        shapeplots(shape_arr, linelist, mag_vecs = patch_arr)
-
-    return patch_arr, shape_arr, hinge_vec, current_energy
+    return patch_arr, shape_arr, hinge_vec, hinge_loc, current_energy
