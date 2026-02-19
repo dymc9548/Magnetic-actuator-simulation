@@ -207,14 +207,15 @@ def translate_to_origin(patch_arr_init, shape_arr_init, hinge_loc_init, hingecho
     Inputs:
         patch_arr_init: 2x(2n) array of x and y points that describe the lines of the magentic patches. n is number of patches
         shape_ar_init: 2x(2m*s) array of x and y points that describe the lines enclosing each shape. m is number of shapes. s is number of sides on that shape
-        hinge_loc: 2x(m-1) array of x and y points that contain hinge locations. m is the number of shapes
+        hinge_loc_init: 2x(m-1) array of x and y points that contain hinge locations. m is the number of shapes
         hingechoice: Chosen hinge to revolve around (0 is first hinge)
         Collin code has: sym: (optional) Boolean indicating whether or not the translation is for the symmetry function (may need to update when doing sym score)
     Outputs:
-        new_line_arr: translated line_arr
-        new_shape_arr: translated shape_arr
+        patch_arr: translated patch_arr
+        shape_arr: translated shape_arr
+        hinge_loc: translated hinge_loc
     '''
-    #Create a deepcopy of both arrays (necessary to prevent modifying original when performing trial runs in Monte Carlo)
+    #Create a deepcopy of arrays (necessary to prevent modifying original when performing trial runs in Monte Carlo)
     patch_arr = copy.deepcopy(patch_arr_init)
     shape_arr = copy.deepcopy(shape_arr_init)
     hinge_loc = copy.deepcopy(hinge_loc_init)
@@ -234,14 +235,16 @@ def rotate(patch_arr_init, shape_arr_init, linelist, hinge_vec_init, hinge_loc_i
         patch_arr_init: 2x(2n) array of x and y points that describe the lines of the magentic patch. n is number of shapes
         shape_arr_init: 2x(2n*s) array of x and y points that describe the lines enclosing each shape. n is number of shapes. s is number of sides on that shape
         linelist: List of integers describing the number of sides in each shape
-        hinge_vec: Vector of hinge angles. Interdipolar angle between each shape
+        hinge_vec_init: Vector of hinge angles. Interdipolar angle between each shape
+        hinge_loc_init: 2x(m-1) array of x and y points that contain hinge locations. m is the number of shapes
         hingechoice: integer chosen hinge about which to revolve
         angle: float chosen angly by which to revolve
         patch_num: n-dim list of patches per shape, where n is number of shapes
     #Outputs:
-        new patch-arr: rotated patch_arr
-        new_shape_arr: rotated shape_arr
-        new_hinge_vec: rotated hinge_vec
+        patch_arr: rotated patch_arr
+        shape_arr: rotated shape_arr
+        hinge_vec: rotated hinge_vec
+        hinge_loc: rotated hinge_loc
     '''
     hinge_vec = copy.deepcopy(hinge_vec_init)
     patch_arr = copy.deepcopy(patch_arr_init)
@@ -259,7 +262,7 @@ def rotate(patch_arr_init, shape_arr_init, linelist, hinge_vec_init, hinge_loc_i
     index = 2*patches_left #get the index at which to start rotating
     #index = np.argmax(patch_arr[0,:]>0) #Get the index at which x becomes positive--everything to the right of this we rotate
     
-    #rotate line and shape arrays using matrix multiplication. Matrix multiplication performed on all points to the right of the hinge. Indexing reflects position of hinge in arrays
+    #rotate patch and shape and hinge arrays using matrix multiplication. Matrix multiplication performed on all points to the right of the hinge. Indexing reflects position of hinge in arrays
     patch_arr[:,index:] = np.matmul(rotation_matrix,patch_arr[:,index:])
     shape_arr[:,np.sum(linelist[:hingechoice+1]*2):] = np.matmul(rotation_matrix,shape_arr[:,np.sum(linelist[:hingechoice+1]*2):])
     hinge_loc[:,hingechoice:] = np.matmul(rotation_matrix, hinge_loc[:,hingechoice:])
@@ -270,11 +273,13 @@ def rotate(patch_arr_init, shape_arr_init, linelist, hinge_vec_init, hinge_loc_i
 def translate_back(patch_arr_init,shape_arr_init,hinge_loc_init):
     '''This function translates any structure back to the reference position where the leftmost point of the first shape is located at the origin
     Inputs:
-        patch_arr: 2x(2n) array of x and y points that describe the lines of the magentic patch. n is number of shapes
-        shape_arr: 2x(2n*s) array of x and y points that describe the lines enclosing each shape. n is number of shapes. s is number of sides on that shape
+        patch_arr_init: 2x(2n) array of x and y points that describe the lines of the magentic patch. n is number of shapes
+        shape_arr_init: 2x(2n*s) array of x and y points that describe the lines enclosing each shape. n is number of shapes. s is number of sides on that shape
+        hinge_loc_init: 2x(m-1) array of x and y points that contain hinge locations. m is the number of shapes
     Outputs:
-        new_line_arr: translated line_arr
-        new_shape_arr: translated shape_arr
+        patch_arr: translated patch_arr
+        shape_arr: translated shape_arr
+        hinge_loc: translated hinge_loc
     '''
 
     patch_arr = copy.deepcopy(patch_arr_init)
@@ -287,7 +292,7 @@ def translate_back(patch_arr_init,shape_arr_init,hinge_loc_init):
    
     patch_arr -= xy_trans #translate line_arr by subtracting the value (subtracting a negative to make a positive)
     shape_arr -= xy_trans #translate shape_arr
-    hinge_loc -= xy_trans
+    hinge_loc -= xy_trans #translate hinge_loc
     
     return patch_arr,shape_arr, hinge_loc
 
@@ -301,10 +306,12 @@ def rotate_once(patch_arr,shape_arr,linelist,hinge_vec,hingechoice, hinge_loc, a
         hingechoice: integer chosen hinge about which to revolve
         hinge_loc: 2x(m-1) array of x and y points that contain hinge locations. m is the number of shapes
         angle: float chosen angly by which to revolve
+        patch_num: n-dim list of patches per shape, where n is number of shapes
     #Outputs:
-        new patch-arr: rotated line_arr
-        new_shape_arr: rotated shape_arr
-        new_hinge_vec: rotated hinge_vec
+        patch_arr: rotated line_arr
+        shape_arr: rotated shape_arr
+        hinge_vec: rotated hinge_vec
+        hinge_loc: rotated hinge_loc
     '''
 
     patch_arr, shape_arr, hinge_loc = translate_to_origin(patch_arr, shape_arr, hinge_loc, hingechoice) #translate hinge to the origin
@@ -367,7 +374,7 @@ def initialize_energy(magvec):
     return mask_arr, v_xmat, h_xmat, v_ymat, h_ymat, Ml_mat
 
 
-def energy_math(patch_arr,mask_arr, v_xmat, h_xmat, v_ymat, h_ymat,Ml_mat):
+def energy_math(patch_arr_init,mask_arr, v_xmat, h_xmat, v_ymat, h_ymat,Ml_mat):
     '''This function calculates the total interdipolar energy of the system
     Inputs:
         patch_arr_init: 2x(2n) array of x and y points that describe the lines of the magentic patch. n is number of distinct magnetic domains
@@ -381,7 +388,7 @@ def energy_math(patch_arr,mask_arr, v_xmat, h_xmat, v_ymat, h_ymat,Ml_mat):
         #E: total energy of the system
     '''
     #Create a deepcopy of line_arr to prevent line_arr from being modified during the vector operations in this function
-    patch_arr = copy.deepcopy(patch_arr)
+    patch_arr = copy.deepcopy(patch_arr_init)
     
     v_xmat[:,0] = patch_arr[0,:] #replace first column with x-values
     h_xmat[1,:] = patch_arr[0,:] #replace second row with x-values
@@ -414,9 +421,28 @@ def simulate_greedyDescent(patch_arr_init,shape_arr_init,linelist,hinge_vec_init
     Accept the move with the largest negative energy change, then repeat.
 
     Inputs:
+        patch_arr_init: 2x(2n) array of x and y points that describe the lines of the magentic patch. n is number of distinct magnetic domains
+        shape_arr_init: 2x(2n*s) array of x and y points that describe the lines enclosing each shape. n is number of shapes. s is number of sides on that shape
+        linelist: List of integers describing the number of sides in each shape
+        hinge_vec_init: Vector of hinge angles. Interdipolar angle between each shape
+        hinge_loc_init: 2x(m-1) array of x and y points that contain hinge locations. m is the number of shapes
+        std: (float) standard deviation of the distribution from which to pull the rotation angle
+        patch_num: n-dim list of patches per shape, where n is number of shapes
+        mask_arr: An special nxn upper diagonal matrix of 0's, 1's, and -1's useful for the energy calculation. n is 2x number of shapes
+        v_xmat: An nx2 array of 1's
+        h_xmat: A 2xn array of -1's
+        v_ymat: An nx2 array of 1's
+        h_ymat: A 2xn array of -1's
+        Ml_mat: An nxn array that contains combinations of magnetizations and lengths
+        max_iter: (int) maximum number of iterations to run the simulation
+        tol: (float) defined minumum energy change value to be accepted (default zero)
 
     Outputs:
-
+        patch_arr: 2x(2n) array of x and y points that describe the lines of the final magentic patches
+        shape_arr: 2x(2n*s) array of x and y points that describe the lines enclosing each final shape
+        hinge_vec: Vector of final hinge angles
+        hinge_loc: 2x(m-1) array of x and y points that contain final hinge locations
+        current_energy: (float) Energy at the end of the simulation
     """
 
     # Deepcopy initial state
@@ -471,6 +497,10 @@ def simulate_greedyDescent(patch_arr_init,shape_arr_init,linelist,hinge_vec_init
         else: # no favorable moves
             print(f"Converged after {iteration} iterations.")
             break
+        
+        # check if we are on the order of kBT or not
+        if abs(best_deltaE) < 10e-20:
+            print('small E: ',best_deltaE)
         
         # plot line for testing commented out typically
         ### shapeplots(shape_arr, linelist, mag_vecs = patch_arr)
