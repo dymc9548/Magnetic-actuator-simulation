@@ -136,7 +136,7 @@ def shapeplots(shape_arr, linelist, blocking = False, title = '', show = True, b
     '''Plots all of the shapes in 2D space
     Inputs:
         shape_arr: 2x(2n*s) array of x and y points that describe the lines enclosing each shape. n is number of shapes. s is number of sides on that shape
-        linelist:List of integers describing the number of sides in each shape
+        linelist: List of integers describing the number of sides in each shape
         blocking: (optional) boolean describes if plot appearing blocks further code or not
         title: (optional) string title of plot
         bounds: (optional) list of x and y bounds for the plot [xmin xmax ymin ymax]
@@ -405,7 +405,13 @@ def energy_math(patch_arr_init,mask_arr, v_xmat, h_xmat, v_ymat, h_ymat,Ml_mat):
     y_square = np.square(ymat_upper ) #square all values. note that squaring removes -1/1 pattern
     
     final_mat = np.multiply(np.sqrt(x_square + y_square),mask_arr) #add the squares of x and y values and take the square root. Then multiply this element-wise by mask_arr
-                                                                   #to reinstate -1/1 pattern
+                                                                   #to reinstate -1/1 pattern      
+    
+    #safeguard against small floating point issues
+    epsilon = 1e-12
+    small = (np.abs(final_mat) < epsilon) & (mask_arr != 0)
+    final_mat[small] = epsilon * np.sign(final_mat[small])
+
     indices = np.nonzero(final_mat) #Determine the indices of all nonzero values to allow for taking the reciprocal
     vec = np.multiply(Ml_mat[indices],np.reciprocal(final_mat[indices])) #multiply piecewise the nonzero values of the inverse of the magnitude matrix with corresponding values of the 
                                                                          #M/L combination matrix
@@ -500,7 +506,7 @@ def simulate_greedyDescent(patch_arr_init,shape_arr_init,linelist,hinge_vec_init
         
         # check if we are on the order of kBT or not
         if abs(best_deltaE) < 10e-20:
-            print('small E: ',best_deltaE)
+            print('small E: ',best_deltaE, iteration)
         
         # plot line for testing commented out typically
         ### shapeplots(shape_arr, linelist, mag_vecs = patch_arr)
