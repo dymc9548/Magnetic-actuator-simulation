@@ -132,11 +132,12 @@ def generate(shapes):
     return hinge_vec,hinge_loc,shape_arr,linelist,patch_arr,patch_num
 
     
-def shapeplots(shape_arr, linelist, blocking = False, title = '', show = True, bounds = '', mag_vecs = []):
+def shapeplots(shape_arr, linelist, hinge_loc, blocking = False, title = '', show = True, bounds = '', mag_vecs = []):
     '''Plots all of the shapes in 2D space
     Inputs:
         shape_arr: 2x(2n*s) array of x and y points that describe the lines enclosing each shape. n is number of shapes. s is number of sides on that shape
         linelist: List of integers describing the number of sides in each shape
+        hinge_loc: 2x(n-1) array of x and y points that contain hinge locations. n is the number of shapes
         blocking: (optional) boolean describes if plot appearing blocks further code or not
         title: (optional) string title of plot
         bounds: (optional) list of x and y bounds for the plot [xmin xmax ymin ymax]
@@ -150,7 +151,72 @@ def shapeplots(shape_arr, linelist, blocking = False, title = '', show = True, b
     for i in range(len(linelist)): #for each shape
         shape_end += linelist[i]*2 #The new index is twice the number of sides in the shape
         plt.plot(shape_arr[0,shape_start:shape_end],shape_arr[1,shape_start:shape_end],'k') #Plot all values of shape array in black
+
+
+        if i == 0: # if it's the first shape
+            # midpoint of right edge
+            right_idx = shape_start + 6
+
+            x1, x2 = shape_arr[0, right_idx:right_idx+2]
+            y1, y2 = shape_arr[1, right_idx:right_idx+2]
+
+            xm_right = (x1 + x2)/2
+            ym_right = (y1 + y2)/2
+
+            xh = hinge_loc[0][i]
+            yh = hinge_loc[1][i]
+
+            plt.plot([xm_right, xh], [ym_right, yh], 'k')
+        elif i == (len(linelist)-1): # if it's the last shape
+            # midpoint of left edge
+            left_idx = shape_start + 2
+
+            x1, x2 = shape_arr[0, left_idx:left_idx+2]
+            y1, y2 = shape_arr[1, left_idx:left_idx+2]
+
+            xm_left = (x1 + x2)/2
+            ym_left = (y1 + y2)/2
+
+            xh = hinge_loc[0][i-1]
+            yh = hinge_loc[1][i-1]
+
+            plt.plot([xm_left, xh], [ym_left, yh], 'k')
+
+        else:
+            # midpoint of right edge
+            right_idx = shape_start + 6
+
+            x1, x2 = shape_arr[0, right_idx:right_idx+2]
+            y1, y2 = shape_arr[1, right_idx:right_idx+2]
+
+            xm_right = (x1 + x2)/2
+            ym_right = (y1 + y2)/2
+
+            xh = hinge_loc[0][i]
+            yh = hinge_loc[1][i]
+
+            plt.plot([xm_right, xh], [ym_right, yh], 'k')
+
+            # midpoint of left edge
+            left_idx = shape_start + 2
+
+            x1, x2 = shape_arr[0, left_idx:left_idx+2]
+            y1, y2 = shape_arr[1, left_idx:left_idx+2]
+
+            xm_left = (x1 + x2)/2
+            ym_left = (y1 + y2)/2
+
+            xh = hinge_loc[0][i-1]
+            yh = hinge_loc[1][i-1]
+
+            plt.plot([xm_left, xh], [ym_left, yh], 'k')
+        
         shape_start = shape_end #The new start is the previous ending
+
+    for i in range(len(hinge_loc[0])):
+        xh = hinge_loc[0][i]
+        yh = hinge_loc[1][i]
+        plt.plot(xh, yh, 'ko', markersize=2)
 
     if len(mag_vecs) != 0: #If plotting magnetization vectors is desired
         #Plot each magnetization vector as an arrow
