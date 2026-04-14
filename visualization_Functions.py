@@ -578,3 +578,22 @@ def simulate_greedyDescent(patch_arr_init,shape_arr_init,linelist,hinge_vec_init
         ### shapeplots(shape_arr, linelist, mag_vecs = patch_arr)
 
     return patch_arr, shape_arr, hinge_vec, hinge_loc, current_energy
+
+
+def sim_many(sims, method, patch_arr_init,shape_arr_init,linelist,hinge_vec_init, hinge_loc_init, std, patch_num, mask_arr, v_xmat, h_xmat, v_ymat, h_ymat, Ml_mat, max_iter, tol=0, plot=False):
+
+    final_hinges = np.zeros((sims,len(hinge_vec_init))) #Initialize an array to store all final hinge conformations
+    final_e = np.zeros(sims) #Initialize vector to store final energy state of each fold
+
+    for i in range(sims): #For loop runs through all simulations
+        if method == 'greedy descent':
+            patch_arr, shape_arr, hinge_vec, hinge_loc, current_energy = simulate_greedyDescent(patch_arr_init,shape_arr_init,linelist,hinge_vec_init, hinge_loc_init, std, patch_num, mask_arr, v_xmat, h_xmat, v_ymat, h_ymat, Ml_mat, max_iter, tol=0)
+        for j in range(len(hinge_vec)): #loop through number of movable hinges
+            final_hinges[i,j]= hinge_vec[j] #Place all values of the final hinge angles into their corresponding index in final_hinges
+            final_e[i] = current_energy #The minimum energy of a fold is stored
+        if plot:
+            shapeplots(shape_arr, linelist,hinge_loc, mag_vecs = patch_arr)
+        
+    return final_hinges, final_e
+
+
