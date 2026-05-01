@@ -42,6 +42,9 @@ def sim_many(sims, method, patch_arr_init,shape_arr_init,linelist,hinge_vec_init
             patch_arr, shape_arr, hinge_vec, hinge_loc, current_energy = simulate_greedyDescent(patch_arr_init,shape_arr_init,linelist,hinge_vec_init, hinge_loc_init, std, patch_num, mask_arr, v_xmat, h_xmat, v_ymat, h_ymat, Ml_mat, max_iter, tol=0)
         elif method == 'monte carlo':
             patch_arr, shape_arr, hinge_vec, hinge_loc, current_energy = simulate_greedyDescent(patch_arr_init,shape_arr_init,linelist,hinge_vec_init, hinge_loc_init, std, patch_num, mask_arr, v_xmat, h_xmat, v_ymat, h_ymat, Ml_mat, max_iter, kBT)
+        elif method == 'weighted sync':
+            patch_arr, shape_arr, hinge_vec, hinge_loc, current_energy = simulate_weightedSync(patch_arr_init,shape_arr_init,linelist,hinge_vec_init, hinge_loc_init, std, patch_num, mask_arr, v_xmat, h_xmat, v_ymat, h_ymat, Ml_mat, max_iter, tol=0)
+        
         for j in range(len(hinge_vec)): #loop through number of movable hinges
             final_hinges[i,j]= hinge_vec[j] #Place all values of the final hinge angles into their corresponding index in final_hinges
             final_e[i] = current_energy #The minimum energy of a fold is stored
@@ -99,18 +102,18 @@ def simulate_greedyDescent(patch_arr_init,shape_arr_init,linelist,hinge_vec_init
 
         for h in range(num_hinges): # for each hinge
         
-            angle_trial = np.random.normal(0,std) #pull a trial angle from the Gaussian distribution
+            trial_angle = np.random.normal(0,std) #pull a trial angle from the Gaussian distribution
 
             for sign in [1,-1]: # test the angle in both directions
-                angle_trial = angle_trial*sign 
-                trial_patch, trial_shape, trial_hinge, trial_hingeloc = rotate_once(patch_arr, shape_arr, linelist, hinge_vec, h, hinge_loc, angle_trial, patch_num) # rotate by the angle
+                trial_angle = trial_angle*sign 
+                trial_patch, trial_shape, trial_hinge, trial_hingeloc = rotate_once(patch_arr, shape_arr, linelist, hinge_vec, h, hinge_loc, trial_angle, patch_num) # rotate by the angle
                 overlap = check_overlap(trial_shape, polycount)
 
                 if overlap: #if the shapes overlap
                     steric_counter = 0
                     while steric_counter<10: # do ten attempts
-                        new_angle_trial = angle_trial/2 # reduce the tested angle by half
-                        trial_patch, trial_shape, trial_hinge, trial_hingeloc = rotate_once(patch_arr, shape_arr, linelist, hinge_vec, h, hinge_loc, new_angle_trial, patch_num) #try rotating again
+                        new_trial_angle = trial_angle/2 # reduce the tested angle by half
+                        trial_patch, trial_shape, trial_hinge, trial_hingeloc = rotate_once(patch_arr, shape_arr, linelist, hinge_vec, h, hinge_loc, new_trial_angle, patch_num) #try rotating again
                         overlap = check_overlap(trial_shape, polycount)
                         if overlap: # if still overlapped
                             steric_counter += 1 # increment test counter and move to the next angle reduction
@@ -194,10 +197,10 @@ def simulate_monteCarlo(patch_arr_init, shape_arr_init, linelist, hinge_vec_init
         h = np.random.randint(0, num_hinges)
 
         # Propose random move
-        angle_trial = np.random.normal(0, std)
+        trial_angle = np.random.normal(0, std)
 
         # Rotate the hinge
-        trial_patch, trial_shape, trial_hinge, trial_hingeloc = rotate_once(patch_arr, shape_arr,linelist, hinge_vec, h, hinge_loc, angle_trial, patch_num)
+        trial_patch, trial_shape, trial_hinge, trial_hingeloc = rotate_once(patch_arr, shape_arr,linelist, hinge_vec, h, hinge_loc, trial_angle, patch_num)
 
         # Steric check 
         overlap = check_overlap(trial_shape, polycount)
@@ -205,8 +208,8 @@ def simulate_monteCarlo(patch_arr_init, shape_arr_init, linelist, hinge_vec_init
         if overlap: #if the shapes overlap
             steric_counter = 0
             while steric_counter<10: # do ten attempts
-                new_angle_trial = angle_trial/2 # reduce the tested angle by half
-                trial_patch, trial_shape, trial_hinge, trial_hingeloc = rotate_once(patch_arr, shape_arr, linelist, hinge_vec, h, hinge_loc, new_angle_trial, patch_num) #try rotating again
+                new_trial_angle = trial_angle/2 # reduce the tested angle by half
+                trial_patch, trial_shape, trial_hinge, trial_hingeloc = rotate_once(patch_arr, shape_arr, linelist, hinge_vec, h, hinge_loc, new_trial_angle, patch_num) #try rotating again
                 overlap = check_overlap(trial_shape, polycount)
                 if overlap: # if still overlapped
                     steric_counter += 1 # increment test counter and move to the next angle reduction
@@ -241,5 +244,161 @@ def simulate_monteCarlo(patch_arr_init, shape_arr_init, linelist, hinge_vec_init
             print(f"Iter {iteration} | E = {current_energy:.3e} | acc = {acc_rate:.3f}")
 
     #print(f"Final acceptance rate: {accepted/max_iter:.3f}")
+
+    return patch_arr, shape_arr, hinge_vec, hinge_loc, current_energy
+
+
+def simulate_weightedSync(patch_arr_init, shape_arr_init, linelist, hinge_vec_init, hinge_loc_init, std, patch_num, mask_arr, v_xmat, h_xmat, v_ymat, h_ymat, Ml_mat, max_iter, tol=0):
+    """
+    Simulate as follows: sample a random angle, then test each hinge rotation by that angle in both directions, and store the most favorable energy change.
+    Then, rotate all hinges simultaneously by a weighted amount (weighted by most favorable energy change). If overlap, reduce all hinge rotations by half and try again.
+
+    Inputs:
+        patch_arr_init: 2x(2n) array of x and y points that describe the lines of the magentic patch. n is number of distinct magnetic domains
+        shape_arr_init: 2x(2n*s) array of x and y points that describe the lines enclosing each shape. n is number of shapes. s is number of sides on that shape
+        linelist: List of integers describing the number of sides in each shape
+        hinge_vec_init: Vector of hinge angles. Interdipolar angle between each shape
+        hinge_loc_init: 2x(m-1) array of x and y points that contain hinge locations. m is the number of shapes
+        std: (float) standard deviation of the distribution from which to pull the rotation angle
+        patch_num: n-dim list of patches per shape, where n is number of shapes
+        mask_arr: An special nxn upper diagonal matrix of 0's, 1's, and -1's useful for the energy calculation. n is 2x number of shapes
+        v_xmat: An nx2 array of 1's
+        h_xmat: A 2xn array of -1's
+        v_ymat: An nx2 array of 1's
+        h_ymat: A 2xn array of -1's
+        Ml_mat: An nxn array that contains combinations of magnetizations and lengths
+        max_iter: (int) maximum number of iterations to run the simulation
+        tol: (float) defined minumum energy change value to be accepted (default zero)
+
+    Outputs:
+        patch_arr: 2x(2n) array of x and y points that describe the lines of the final magentic patches
+        shape_arr: 2x(2n*s) array of x and y points that describe the lines enclosing each final shape
+        hinge_vec: Vector of final hinge angles
+        hinge_loc: 2x(m-1) array of x and y points that contain final hinge locations
+        current_energy: (float) Energy at the end of the simulation
+    """
+    
+    # Deep copy initial state
+    patch_arr = copy.deepcopy(patch_arr_init)
+    shape_arr = copy.deepcopy(shape_arr_init)
+    hinge_vec = copy.deepcopy(hinge_vec_init)
+    hinge_loc = copy.deepcopy(hinge_loc_init)
+
+    # calculate the current energy
+    current_energy = energy_math(patch_arr, mask_arr, v_xmat, h_xmat, v_ymat, h_ymat, Ml_mat)
+
+    # store the numer of hinges and shapes
+    num_hinges = len(hinge_vec)
+    polycount = count_shapes(shape_arr)
+
+    for iteration in range(max_iter):
+        
+        trial_angle = np.random.normal(0, std) # pull a random angle
+
+        # initialize energy and sign arrays
+        deltaEs = np.zeros(num_hinges)
+        signs = np.zeros(num_hinges)
+
+        # evaluate each hinge independently
+        for h in range(num_hinges):
+
+            # initialize "best" values for the hinge
+            best_deltaE = np.inf
+            best_sign = 0
+
+            for sign in [1, -1]: # for both directions
+                test_trial_angle = trial_angle * sign
+
+                # rotate the shape
+                trial_patch, trial_shape, _, _ = rotate_once(
+                    patch_arr, shape_arr, linelist,
+                    hinge_vec, h, hinge_loc,
+                    test_trial_angle, patch_num
+                )
+
+                overlap = check_overlap(trial_shape, polycount) # check for overlap
+
+                # MAY NEED TO ASSESS WHETHER THIS IS PHYSICAL (could reduce angle here, then store reduction for later)
+                if overlap:
+                    continue
+
+                # calculate the energy change
+                trial_energy = energy_math(trial_patch, mask_arr,
+                                           v_xmat, h_xmat,
+                                           v_ymat, h_ymat, Ml_mat)
+                deltaE = trial_energy - current_energy
+
+                if deltaE < best_deltaE: # if it's a more favorable move, update the "best" move
+                    best_deltaE = deltaE
+                    best_sign = sign
+
+            if best_deltaE < 0: # as long as the best move is favorable
+                deltaEs[h] = -best_deltaE   # positive weight
+                signs[h] = best_sign
+            else:
+                deltaEs[h] = 0
+                signs[h] = 0
+
+        # normalize weights
+        total = np.sum(deltaEs)
+
+        if total == 0:
+            break  # no favorable directions anywhere
+
+        weights = deltaEs / max(deltaEs) # normalization
+
+        # construct simultaneous rotation
+        theta_vec = trial_angle * weights * signs # angle array for rotation
+
+        # parameters for keeping track of overlap failure
+        success = False
+        scale = 1.0
+
+        for _ in range(10): # try ten times
+
+            trial_patch = copy.deepcopy(patch_arr)
+            trial_shape = copy.deepcopy(shape_arr)
+            trial_hinge = copy.deepcopy(hinge_vec)
+            trial_hingeloc = copy.deepcopy(hinge_loc)
+
+            # apply all hinge rotations sequentially
+            for h in range(num_hinges):
+                if theta_vec[h] == 0: # if the hinge isn't rotating, continue
+                    continue
+
+                # attempt rotation
+                trial_patch, trial_shape, trial_hinge, trial_hingeloc = rotate_once(
+                    trial_patch, trial_shape, linelist,
+                    trial_hinge, h, trial_hingeloc,
+                    theta_vec[h] * scale, patch_num
+                )
+
+            overlap = check_overlap(trial_shape, polycount) # check overlap
+
+            if not overlap:
+                success = True
+                break
+            else:
+                scale *= 0.5  # shrink all moves and try again if overlap
+
+        if not success:
+            continue  # reject step
+
+        # calculate energy change
+        trial_energy = energy_math(trial_patch, mask_arr,
+                                   v_xmat, h_xmat,
+                                   v_ymat, h_ymat, Ml_mat)
+        deltaE_total = trial_energy - current_energy
+
+        if deltaE_total < tol: # accept move if the energy change is favorable
+            patch_arr = trial_patch
+            shape_arr = trial_shape
+            hinge_vec = trial_hinge
+            hinge_loc = trial_hingeloc
+            current_energy = trial_energy
+        else:
+            break # if no favorable energy change, stop
+
+    print("Current energy:", current_energy, "Joules")
 
     return patch_arr, shape_arr, hinge_vec, hinge_loc, current_energy
