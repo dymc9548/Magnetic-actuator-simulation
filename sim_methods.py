@@ -13,7 +13,7 @@ def sim_many(sims, method, patch_arr_init,shape_arr_init,linelist,hinge_vec_init
 
     Inputs:
         sims: (int) number of simulations to run
-        method: (str) kind of simulation to use
+        method: (str) kind of simulation to use; can be 'greedy descent', 'monte carlo', 'weighted sync'
         patch_arr_init: 2x(2n) array of x and y points that describe the lines of the magentic patch. n is number of distinct magnetic domains
         shape_arr_init: 2x(2n*s) array of x and y points that describe the lines enclosing each shape. n is number of shapes. s is number of sides on that shape
         linelist: List of integers describing the number of sides in each shape
@@ -30,6 +30,8 @@ def sim_many(sims, method, patch_arr_init,shape_arr_init,linelist,hinge_vec_init
         max_iter: (int) maximum number of iterations to run the simulation
         kBT: default room temperature
         tol: (float) defined minumum energy change value to be accepted (default zero)
+        plot: (bool) whether or not to plot each sim
+        animate: (bool) whether or not to save the animation of the final sim
 
     Outputs:
         final_hinges: An Nxn array of hinge angle values, where N is the number of simulations and n is the number of hinges
@@ -41,11 +43,11 @@ def sim_many(sims, method, patch_arr_init,shape_arr_init,linelist,hinge_vec_init
 
     for i in range(sims): #For loop runs through all simulations
         if method == 'greedy descent':
-            patch_arr, shape_arr, hinge_vec, hinge_loc, current_energy = simulate_greedyDescent(patch_arr_init,shape_arr_init,linelist,hinge_vec_init, hinge_loc_init, std, patch_num, mask_arr, v_xmat, h_xmat, v_ymat, h_ymat, Ml_mat, max_iter, tol=0)
+            patch_arr, shape_arr, hinge_vec, hinge_loc, current_energy = simulate_greedyDescent(patch_arr_init,shape_arr_init,linelist,hinge_vec_init, hinge_loc_init, std, patch_num, mask_arr, v_xmat, h_xmat, v_ymat, h_ymat, Ml_mat, max_iter, tol=tol, animate=animate)
         elif method == 'monte carlo':
-            patch_arr, shape_arr, hinge_vec, hinge_loc, current_energy = simulate_greedyDescent(patch_arr_init,shape_arr_init,linelist,hinge_vec_init, hinge_loc_init, std, patch_num, mask_arr, v_xmat, h_xmat, v_ymat, h_ymat, Ml_mat, max_iter, kBT)
+            patch_arr, shape_arr, hinge_vec, hinge_loc, current_energy = simulate_monteCarlo(patch_arr_init,shape_arr_init,linelist,hinge_vec_init, hinge_loc_init, std, patch_num, mask_arr, v_xmat, h_xmat, v_ymat, h_ymat, Ml_mat, max_iter, kBT=kBT, animate=animate)
         elif method == 'weighted sync':
-            patch_arr, shape_arr, hinge_vec, hinge_loc, current_energy = simulate_weightedSync(patch_arr_init,shape_arr_init,linelist,hinge_vec_init, hinge_loc_init, std, patch_num, mask_arr, v_xmat, h_xmat, v_ymat, h_ymat, Ml_mat, max_iter, tol=0, animate=animate)
+            patch_arr, shape_arr, hinge_vec, hinge_loc, current_energy = simulate_weightedSync(patch_arr_init,shape_arr_init,linelist,hinge_vec_init, hinge_loc_init, std, patch_num, mask_arr, v_xmat, h_xmat, v_ymat, h_ymat, Ml_mat, max_iter, tol=tol, animate=animate)
         
         for j in range(len(hinge_vec)): #loop through number of movable hinges
             final_hinges[i,j]= hinge_vec[j] #Place all values of the final hinge angles into their corresponding index in final_hinges
@@ -55,7 +57,7 @@ def sim_many(sims, method, patch_arr_init,shape_arr_init,linelist,hinge_vec_init
         
     return final_hinges, final_e
 
-def simulate_greedyDescent(patch_arr_init,shape_arr_init,linelist,hinge_vec_init, hinge_loc_init, std, patch_num, mask_arr, v_xmat, h_xmat, v_ymat, h_ymat, Ml_mat, max_iter, tol=0):
+def simulate_greedyDescent(patch_arr_init,shape_arr_init,linelist,hinge_vec_init, hinge_loc_init, std, patch_num, mask_arr, v_xmat, h_xmat, v_ymat, h_ymat, Ml_mat, max_iter, tol=0, animate=False):
     """
     Simulate as follows: for each hinge, sample a random angle, then move the hinge by that angle in the favorable direction and calculate the energy change.
     Accept the move with the largest negative energy change, then repeat.
@@ -76,6 +78,7 @@ def simulate_greedyDescent(patch_arr_init,shape_arr_init,linelist,hinge_vec_init
         Ml_mat: An nxn array that contains combinations of magnetizations and lengths
         max_iter: (int) maximum number of iterations to run the simulation
         tol: (float) defined minumum energy change value to be accepted (default zero)
+        animate: (bool) whether or not to animate the folding
 
     Outputs:
         patch_arr: 2x(2n) array of x and y points that describe the lines of the final magentic patches
@@ -95,6 +98,7 @@ def simulate_greedyDescent(patch_arr_init,shape_arr_init,linelist,hinge_vec_init
     current_energy = energy_math(patch_arr, mask_arr, v_xmat, h_xmat, v_ymat, h_ymat, Ml_mat)
     num_hinges = len(hinge_vec)
     polycount = count_shapes(shape_arr)
+    states=[]
 
     for iteration in range(max_iter): # for our iterations
 
@@ -142,7 +146,16 @@ def simulate_greedyDescent(patch_arr_init,shape_arr_init,linelist,hinge_vec_init
         # if abs(best_deltaE) < 10e-20:
         #     print('small E: ',best_deltaE, iteration)
 
-    print("Current energy: ", current_energy, " Joules")
+        states.append((copy.deepcopy(shape_arr),copy.deepcopy(hinge_loc), copy.deepcopy(patch_arr))) # save state for animation
+
+    # animate the folding if asked for
+    if animate:
+        fig, ax = plt.subplots()
+        bounds = [None]
+        ani = FuncAnimation(fig, update, frames=iteration, interval=100, fargs=(states, linelist, ax, bounds))
+        ani.save("greedyDescent_folding.gif", writer="pillow", fps=10)
+
+    #print("Current energy: ", current_energy, " Joules")
         
         # plot line for testing commented out typically
         ### shapeplots(shape_arr, linelist, mag_vecs = patch_arr)
@@ -150,7 +163,7 @@ def simulate_greedyDescent(patch_arr_init,shape_arr_init,linelist,hinge_vec_init
     return patch_arr, shape_arr, hinge_vec, hinge_loc, current_energy
 
 
-def simulate_monteCarlo(patch_arr_init, shape_arr_init, linelist, hinge_vec_init, hinge_loc_init, std, patch_num, mask_arr, v_xmat, h_xmat, v_ymat, h_ymat, Ml_mat, max_iter, kBT=4.11e-21):
+def simulate_monteCarlo(patch_arr_init, shape_arr_init, linelist, hinge_vec_init, hinge_loc_init, std, patch_num, mask_arr, v_xmat, h_xmat, v_ymat, h_ymat, Ml_mat, max_iter, kBT=4.11e-21, animate=False):
     """
     Simulate as follows: randomly pick a hinge, propose a random rotation, and accept/reject based on the Boltzmann distribution.
 
@@ -170,6 +183,7 @@ def simulate_monteCarlo(patch_arr_init, shape_arr_init, linelist, hinge_vec_init
         Ml_mat: An nxn array that contains combinations of magnetizations and lengths
         max_iter: (int) maximum number of iterations to run the simulation
         kBT: (float) kBT constant at whatever temperature (default room temperature)
+        animate: (bool) whether or not to store each frame for animation
 
     Outputs:
         patch_arr: 2x(2n) array of x and y points that describe the lines of the final magentic patches
@@ -190,6 +204,7 @@ def simulate_monteCarlo(patch_arr_init, shape_arr_init, linelist, hinge_vec_init
     # store hinge number and shape number
     num_hinges = len(hinge_vec)
     polycount = count_shapes(shape_arr)
+    states = []
 
     accepted = 0 # initialized acceptance count
 
@@ -239,12 +254,24 @@ def simulate_monteCarlo(patch_arr_init, shape_arr_init, linelist, hinge_vec_init
             hinge_loc = trial_hingeloc
             current_energy = trial_energy
             accepted += 1
+        else:
+            continue
 
-        # Additional diagnostics
-        if iteration % 1000 == 0 and iteration > 0:
-            acc_rate = accepted / iteration
-            print(f"Iter {iteration} | E = {current_energy:.3e} | acc = {acc_rate:.3f}")
+        # # Additional diagnostics
+        # if iteration % 1000 == 0 and iteration > 0:
+        #     acc_rate = accepted / iteration
+        #     print(f"Iter {iteration} | E = {current_energy:.3e} | acc = {acc_rate:.3f}")
 
+        states.append((copy.deepcopy(shape_arr),copy.deepcopy(hinge_loc), copy.deepcopy(patch_arr))) # save state for animation
+
+    # animate the folding if asked for
+    if animate:
+        fig, ax = plt.subplots()
+        bounds = [None]
+        ani = FuncAnimation(fig, update, frames=accepted, interval=100, fargs=(states, linelist, ax, bounds))
+        ani.save("monteCarlo_folding.gif", writer="pillow", fps=10)
+
+    #print("Current energy:", current_energy, "Joules")
     #print(f"Final acceptance rate: {accepted/max_iter:.3f}")
 
     return patch_arr, shape_arr, hinge_vec, hinge_loc, current_energy
@@ -271,6 +298,7 @@ def simulate_weightedSync(patch_arr_init, shape_arr_init, linelist, hinge_vec_in
         Ml_mat: An nxn array that contains combinations of magnetizations and lengths
         max_iter: (int) maximum number of iterations to run the simulation
         tol: (float) defined minumum energy change value to be accepted (default zero)
+        animate: (bool) whether or not to store each frame for animation
 
     Outputs:
         patch_arr: 2x(2n) array of x and y points that describe the lines of the final magentic patches
