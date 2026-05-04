@@ -3,9 +3,11 @@ import matplotlib.pyplot as plt
 import shapely as sp
 from shapely.ops import polygonize
 import copy
-from visualization_functions import energy_math, count_shapes, rotate_once, check_overlap, shapeplots
+from visualization_functions import energy_math, count_shapes, rotate_once, check_overlap, shapeplots, update
+from matplotlib.animation import FuncAnimation
 
-def sim_many(sims, method, patch_arr_init,shape_arr_init,linelist,hinge_vec_init, hinge_loc_init, std, patch_num, mask_arr, v_xmat, h_xmat, v_ymat, h_ymat, Ml_mat, max_iter, kBT=4.11e-21, tol=0, plot=False):
+
+def sim_many(sims, method, patch_arr_init,shape_arr_init,linelist,hinge_vec_init, hinge_loc_init, std, patch_num, mask_arr, v_xmat, h_xmat, v_ymat, h_ymat, Ml_mat, max_iter, kBT=4.11e-21, tol=0, plot=False, animate=False):
     """
     Simulate many times and store each simulation's hinge vector and final energy
 
@@ -43,7 +45,7 @@ def sim_many(sims, method, patch_arr_init,shape_arr_init,linelist,hinge_vec_init
         elif method == 'monte carlo':
             patch_arr, shape_arr, hinge_vec, hinge_loc, current_energy = simulate_greedyDescent(patch_arr_init,shape_arr_init,linelist,hinge_vec_init, hinge_loc_init, std, patch_num, mask_arr, v_xmat, h_xmat, v_ymat, h_ymat, Ml_mat, max_iter, kBT)
         elif method == 'weighted sync':
-            patch_arr, shape_arr, hinge_vec, hinge_loc, current_energy = simulate_weightedSync(patch_arr_init,shape_arr_init,linelist,hinge_vec_init, hinge_loc_init, std, patch_num, mask_arr, v_xmat, h_xmat, v_ymat, h_ymat, Ml_mat, max_iter, tol=0)
+            patch_arr, shape_arr, hinge_vec, hinge_loc, current_energy = simulate_weightedSync(patch_arr_init,shape_arr_init,linelist,hinge_vec_init, hinge_loc_init, std, patch_num, mask_arr, v_xmat, h_xmat, v_ymat, h_ymat, Ml_mat, max_iter, tol=0, animate=animate)
         
         for j in range(len(hinge_vec)): #loop through number of movable hinges
             final_hinges[i,j]= hinge_vec[j] #Place all values of the final hinge angles into their corresponding index in final_hinges
@@ -248,7 +250,7 @@ def simulate_monteCarlo(patch_arr_init, shape_arr_init, linelist, hinge_vec_init
     return patch_arr, shape_arr, hinge_vec, hinge_loc, current_energy
 
 
-def simulate_weightedSync(patch_arr_init, shape_arr_init, linelist, hinge_vec_init, hinge_loc_init, std, patch_num, mask_arr, v_xmat, h_xmat, v_ymat, h_ymat, Ml_mat, max_iter, tol=0):
+def simulate_weightedSync(patch_arr_init, shape_arr_init, linelist, hinge_vec_init, hinge_loc_init, std, patch_num, mask_arr, v_xmat, h_xmat, v_ymat, h_ymat, Ml_mat, max_iter, tol=0, animate=False):
     """
     Simulate as follows: sample a random angle, then test each hinge rotation by that angle in both directions, and store the most favorable energy change.
     Then, rotate all hinges simultaneously by a weighted amount (weighted by most favorable energy change). If overlap, reduce all hinge rotations by half and try again.
@@ -290,6 +292,7 @@ def simulate_weightedSync(patch_arr_init, shape_arr_init, linelist, hinge_vec_in
     # store the numer of hinges and shapes
     num_hinges = len(hinge_vec)
     polycount = count_shapes(shape_arr)
+    states = []
 
     for iteration in range(max_iter):
         
@@ -310,11 +313,7 @@ def simulate_weightedSync(patch_arr_init, shape_arr_init, linelist, hinge_vec_in
                 test_trial_angle = trial_angle * sign
 
                 # rotate the shape
-                trial_patch, trial_shape, _, _ = rotate_once(
-                    patch_arr, shape_arr, linelist,
-                    hinge_vec, h, hinge_loc,
-                    test_trial_angle, patch_num
-                )
+                trial_patch, trial_shape, _, _ = rotate_once(patch_arr, shape_arr, linelist, hinge_vec, h, hinge_loc, test_trial_angle, patch_num)
 
                 overlap = check_overlap(trial_shape, polycount) # check for overlap
 
@@ -323,9 +322,7 @@ def simulate_weightedSync(patch_arr_init, shape_arr_init, linelist, hinge_vec_in
                     continue
 
                 # calculate the energy change
-                trial_energy = energy_math(trial_patch, mask_arr,
-                                           v_xmat, h_xmat,
-                                           v_ymat, h_ymat, Ml_mat)
+                trial_energy = energy_math(trial_patch, mask_arr, v_xmat, h_xmat, v_ymat, h_ymat, Ml_mat)
                 deltaE = trial_energy - current_energy
 
                 if deltaE < best_deltaE: # if it's a more favorable move, update the "best" move
@@ -367,11 +364,7 @@ def simulate_weightedSync(patch_arr_init, shape_arr_init, linelist, hinge_vec_in
                     continue
 
                 # attempt rotation
-                trial_patch, trial_shape, trial_hinge, trial_hingeloc = rotate_once(
-                    trial_patch, trial_shape, linelist,
-                    trial_hinge, h, trial_hingeloc,
-                    theta_vec[h] * scale, patch_num
-                )
+                trial_patch, trial_shape, trial_hinge, trial_hingeloc = rotate_once(trial_patch, trial_shape, linelist, trial_hinge, h, trial_hingeloc, theta_vec[h] * scale, patch_num)
 
             overlap = check_overlap(trial_shape, polycount) # check overlap
 
@@ -385,9 +378,7 @@ def simulate_weightedSync(patch_arr_init, shape_arr_init, linelist, hinge_vec_in
             continue  # reject step
 
         # calculate energy change
-        trial_energy = energy_math(trial_patch, mask_arr,
-                                   v_xmat, h_xmat,
-                                   v_ymat, h_ymat, Ml_mat)
+        trial_energy = energy_math(trial_patch, mask_arr, v_xmat, h_xmat, v_ymat, h_ymat, Ml_mat)
         deltaE_total = trial_energy - current_energy
 
         if deltaE_total < tol: # accept move if the energy change is favorable
@@ -399,6 +390,15 @@ def simulate_weightedSync(patch_arr_init, shape_arr_init, linelist, hinge_vec_in
         else:
             break # if no favorable energy change, stop
 
-    print("Current energy:", current_energy, "Joules")
+        states.append((copy.deepcopy(shape_arr),copy.deepcopy(hinge_loc), copy.deepcopy(patch_arr))) # save state for animation
+
+    #print("Current energy:", current_energy, "Joules")
+
+    # animate the folding if asked for
+    if animate:
+        fig, ax = plt.subplots()
+        bounds = [None]
+        ani = FuncAnimation(fig, update, frames=iteration, interval=100, fargs=(states, linelist, ax, bounds))
+        ani.save("weightedSync_folding.gif", writer="pillow", fps=10)
 
     return patch_arr, shape_arr, hinge_vec, hinge_loc, current_energy

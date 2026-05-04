@@ -135,7 +135,7 @@ def generate(shapes):
     return hinge_vec,hinge_loc,shape_arr,linelist,patch_arr,patch_num
 
     
-def shapeplots(shape_arr, linelist, hinge_loc, blocking = False, title = '', show = True, bounds = '', mag_vecs = []):
+def shapeplots(shape_arr, linelist, hinge_loc, blocking = False, title = '', show = True, bounds = '', mag_vecs = [], ax=None):
     '''Plots all of the shapes in 2D space
     Inputs:
         shape_arr: 2x(2n*s) array of x and y points that describe the lines enclosing each shape. n is number of shapes. s is number of sides on that shape
@@ -144,16 +144,20 @@ def shapeplots(shape_arr, linelist, hinge_loc, blocking = False, title = '', sho
         blocking: (optional) boolean describes if plot appearing blocks further code or not
         title: (optional) string title of plot
         bounds: (optional) list of x and y bounds for the plot [xmin xmax ymin ymax]
-        mag_vecs: (optinal) use patch_arr as the input for this to plot the magnetic vectors over the patches'''
+        mag_vecs: (optinal) use patch_arr as the input for this to plot the magnetic vectors over the patches
+        ax: axis, important for animations'''
 
-    plt.figure() #Initialize figure
+    if ax is None:
+        fig, ax = plt.subplots()
+    else:
+        ax.clear()   # important for animation
 
     shape_start = 0 #Initialize index where the shapes start
     shape_end = 0 #initialize index where the shapes end
 
     for i in range(len(linelist)): #for each shape
         shape_end += linelist[i]*2 #The new index is twice the number of sides in the shape
-        plt.plot(shape_arr[0,shape_start:shape_end],shape_arr[1,shape_start:shape_end],'k') #Plot all values of shape array in black
+        ax.plot(shape_arr[0,shape_start:shape_end],shape_arr[1,shape_start:shape_end],'k') #Plot all values of shape array in black
 
 
         if i == 0: # if it's the first shape
@@ -169,7 +173,7 @@ def shapeplots(shape_arr, linelist, hinge_loc, blocking = False, title = '', sho
             xh = hinge_loc[0][i]
             yh = hinge_loc[1][i]
 
-            plt.plot([xm_right, xh], [ym_right, yh], 'k')
+            ax.plot([xm_right, xh], [ym_right, yh], 'k')
         elif i == (len(linelist)-1): # if it's the last shape
             # midpoint of left edge
             left_idx = shape_start + 2
@@ -183,7 +187,7 @@ def shapeplots(shape_arr, linelist, hinge_loc, blocking = False, title = '', sho
             xh = hinge_loc[0][i-1]
             yh = hinge_loc[1][i-1]
 
-            plt.plot([xm_left, xh], [ym_left, yh], 'k')
+            ax.plot([xm_left, xh], [ym_left, yh], 'k')
 
         else:
             # midpoint of right edge
@@ -198,7 +202,7 @@ def shapeplots(shape_arr, linelist, hinge_loc, blocking = False, title = '', sho
             xh = hinge_loc[0][i]
             yh = hinge_loc[1][i]
 
-            plt.plot([xm_right, xh], [ym_right, yh], 'k')
+            ax.plot([xm_right, xh], [ym_right, yh], 'k')
 
             # midpoint of left edge
             left_idx = shape_start + 2
@@ -212,28 +216,40 @@ def shapeplots(shape_arr, linelist, hinge_loc, blocking = False, title = '', sho
             xh = hinge_loc[0][i-1]
             yh = hinge_loc[1][i-1]
 
-            plt.plot([xm_left, xh], [ym_left, yh], 'k')
+            ax.plot([xm_left, xh], [ym_left, yh], 'k')
         
         shape_start = shape_end #The new start is the previous ending
 
     for i in range(len(hinge_loc[0])):
         xh = hinge_loc[0][i]
         yh = hinge_loc[1][i]
-        plt.plot(xh, yh, 'ko', markersize=2)
+        ax.plot(xh, yh, 'ko', markersize=2)
 
     if len(mag_vecs) != 0: #If plotting magnetization vectors is desired
         #Plot each magnetization vector as an arrow
         for i in range(0,np.shape(mag_vecs)[1],2):
-            plt.arrow(mag_vecs[0,i],mag_vecs[1,i],mag_vecs[0,i+1]-mag_vecs[0,i],mag_vecs[1,i+1]-mag_vecs[1,i], color = 'r', linewidth = 3, head_width = 1, length_includes_head = True)
+            ax.arrow(mag_vecs[0,i],mag_vecs[1,i],mag_vecs[0,i+1]-mag_vecs[0,i],mag_vecs[1,i+1]-mag_vecs[1,i], color = 'r', linewidth = 3, head_width = 1, length_includes_head = True)
     
-    plt.axis('square') #Fix the axis
+    ax.set_box_aspect(1)
+    ax.set_aspect("equal", adjustable="datalim")
 
     if title != '': #Add title if desired
-        plt.title(title)
+        ax.set_title(title)
     if bounds != '': #Add bounds if desired
-        plt.axis(bounds)
+        ax.axis(bounds)
     if show == True: #Block the rest of the code if desired
         plt.show(block = blocking) #Show plot
+
+def update(frame, states, linelist, ax, bounds):
+
+    shape_arr, hinge_loc, patch_arr = states[frame]
+    
+    shapeplots(shape_arr, linelist, hinge_loc, ax=ax, show=False, mag_vecs=patch_arr)
+
+    if frame == 0:
+        bounds[0] = ax.axis()
+    else:
+        ax.axis(bounds[0])
 
 
 def count_shapes(shape_arr):
