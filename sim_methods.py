@@ -42,25 +42,28 @@ def sim_many(sims, method, patch_arr_init,shape_arr_init,linelist,hinge_vec_init
 
     final_hinges = np.zeros((sims,len(hinge_vec_init))) #Initialize an array to store all final hinge conformations
     final_e = np.zeros(sims) #Initialize vector to store final energy state of each fold
-
-    # set the folder
-    if method == 'greedy descent':
-        # make a new empty folder for animation saves
-        folder = 'GreedyDescentAnimations'
-        if os.path.exists(folder):
-            shutil.rmtree(folder)
-        os.makedirs(folder)
-    elif method == 'monte carlo':
-        # make a new empty folder for animation saves
-        folder = 'MonteCarloAnimations'
-        if os.path.exists(folder):
-            shutil.rmtree(folder)
-        os.makedirs(folder)
-    elif method == 'weighted sync':
-        folder = 'WeightedSyncAnimations'
-        if os.path.exists(folder):
-            shutil.rmtree(folder)
-        os.makedirs(folder)
+    
+    if animate:
+        # set the folder
+        if method == 'greedy descent':
+            # make a new empty folder for animation saves
+            folder = 'GreedyDescentAnimations'
+            if os.path.exists(folder):
+                shutil.rmtree(folder)
+            os.makedirs(folder)
+        elif method == 'monte carlo':
+            # make a new empty folder for animation saves
+            folder = 'MonteCarloAnimations'
+            if os.path.exists(folder):
+                shutil.rmtree(folder)
+            os.makedirs(folder)
+        elif method == 'weighted sync':
+            folder = 'WeightedSyncAnimations'
+            if os.path.exists(folder):
+                shutil.rmtree(folder)
+            os.makedirs(folder)
+    else:
+        folder = ''
 
     # run the simulation
     for i in range(sims): #For loop runs through all simulations
