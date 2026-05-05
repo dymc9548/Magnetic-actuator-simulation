@@ -123,6 +123,7 @@ def simulate_greedyDescent(patch_arr_init,shape_arr_init,linelist,hinge_vec_init
     num_hinges = len(hinge_vec)
     polycount = count_shapes(shape_arr)
     states=[]
+    states.append((copy.deepcopy(shape_arr),copy.deepcopy(hinge_loc), copy.deepcopy(patch_arr))) # save initial state for animation
 
     for iteration in range(max_iter): # for our iterations
 
@@ -176,7 +177,7 @@ def simulate_greedyDescent(patch_arr_init,shape_arr_init,linelist,hinge_vec_init
     if animate:
         fig, ax = plt.subplots()
         bounds = [None]
-        ani = FuncAnimation(fig, update, frames=iteration, interval=100, fargs=(states, linelist, ax, bounds))
+        ani = FuncAnimation(fig, update, frames=iteration+1, interval=100, fargs=(states, linelist, ax, bounds))
         ani.save(f"{ani_folder}/greedyDescent_folding_{sim_num}.gif", writer="pillow", fps=10)
 
     #print("Current energy: ", current_energy, " Joules")
@@ -231,6 +232,7 @@ def simulate_monteCarlo(patch_arr_init, shape_arr_init, linelist, hinge_vec_init
     num_hinges = len(hinge_vec)
     polycount = count_shapes(shape_arr)
     states = []
+    states.append((copy.deepcopy(shape_arr),copy.deepcopy(hinge_loc), copy.deepcopy(patch_arr))) # save initial state for animation
 
     accepted = 0 # initialized acceptance count
 
@@ -294,7 +296,7 @@ def simulate_monteCarlo(patch_arr_init, shape_arr_init, linelist, hinge_vec_init
     if animate:
         fig, ax = plt.subplots()
         bounds = [None]
-        ani = FuncAnimation(fig, update, frames=accepted, interval=100, fargs=(states, linelist, ax, bounds))
+        ani = FuncAnimation(fig, update, frames=accepted+1, interval=100, fargs=(states, linelist, ax, bounds))
         ani.save(f"{ani_folder}/monteCarlo_folding_{sim_num}.gif", writer="pillow", fps=10)
 
     #print("Current energy:", current_energy, "Joules")
@@ -349,6 +351,7 @@ def simulate_weightedSync(patch_arr_init, shape_arr_init, linelist, hinge_vec_in
     num_hinges = len(hinge_vec)
     polycount = count_shapes(shape_arr)
     states = []
+    states.append((copy.deepcopy(shape_arr),copy.deepcopy(hinge_loc), copy.deepcopy(patch_arr))) # save initial state for animation
 
     for iteration in range(max_iter):
         
@@ -454,7 +457,7 @@ def simulate_weightedSync(patch_arr_init, shape_arr_init, linelist, hinge_vec_in
     if animate:
         fig, ax = plt.subplots()
         bounds = [None]
-        ani = FuncAnimation(fig, update, frames=iteration, interval=100, fargs=(states, linelist, ax, bounds))
+        ani = FuncAnimation(fig, update, frames=iteration+1, interval=100, fargs=(states, linelist, ax, bounds))
         ani.save(f"{ani_folder}/weightedSync_folding_{sim_num}.gif", writer="pillow", fps=10)
 
     return patch_arr, shape_arr, hinge_vec, hinge_loc, current_energy
