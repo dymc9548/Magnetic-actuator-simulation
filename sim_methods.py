@@ -5,6 +5,8 @@ from shapely.ops import polygonize
 import copy
 from visualization_functions import energy_math, count_shapes, rotate_once, check_overlap, shapeplots, update
 from matplotlib.animation import FuncAnimation
+import os
+import shutil
 
 
 def sim_many(sims, method, patch_arr_init,shape_arr_init,linelist,hinge_vec_init, hinge_loc_init, std, patch_num, mask_arr, v_xmat, h_xmat, v_ymat, h_ymat, Ml_mat, max_iter, kBT=4.11e-21, tol=0, plot=False, animate=False):
@@ -41,13 +43,33 @@ def sim_many(sims, method, patch_arr_init,shape_arr_init,linelist,hinge_vec_init
     final_hinges = np.zeros((sims,len(hinge_vec_init))) #Initialize an array to store all final hinge conformations
     final_e = np.zeros(sims) #Initialize vector to store final energy state of each fold
 
+    # set the folder
+    if method == 'greedy descent':
+        # make a new empty folder for animation saves
+        folder = 'GreedyDescentAnimations'
+        if os.path.exists(folder):
+            shutil.rmtree(folder)
+        os.makedirs(folder)
+    elif method == 'monte carlo':
+        # make a new empty folder for animation saves
+        folder = 'MonteCarloAnimations'
+        if os.path.exists(folder):
+            shutil.rmtree(folder)
+        os.makedirs(folder)
+    elif method == 'weighted sync':
+        folder = 'WeightedSyncAnimations'
+        if os.path.exists(folder):
+            shutil.rmtree(folder)
+        os.makedirs(folder)
+
+    # run the simulation
     for i in range(sims): #For loop runs through all simulations
         if method == 'greedy descent':
-            patch_arr, shape_arr, hinge_vec, hinge_loc, current_energy = simulate_greedyDescent(patch_arr_init,shape_arr_init,linelist,hinge_vec_init, hinge_loc_init, std, patch_num, mask_arr, v_xmat, h_xmat, v_ymat, h_ymat, Ml_mat, max_iter, tol=tol, animate=animate)
+            patch_arr, shape_arr, hinge_vec, hinge_loc, current_energy = simulate_greedyDescent(patch_arr_init,shape_arr_init,linelist,hinge_vec_init, hinge_loc_init, std, patch_num, mask_arr, v_xmat, h_xmat, v_ymat, h_ymat, Ml_mat, max_iter, tol=tol, animate=animate, sim_num=i, ani_folder=folder)
         elif method == 'monte carlo':
-            patch_arr, shape_arr, hinge_vec, hinge_loc, current_energy = simulate_monteCarlo(patch_arr_init,shape_arr_init,linelist,hinge_vec_init, hinge_loc_init, std, patch_num, mask_arr, v_xmat, h_xmat, v_ymat, h_ymat, Ml_mat, max_iter, kBT=kBT, animate=animate)
+            patch_arr, shape_arr, hinge_vec, hinge_loc, current_energy = simulate_monteCarlo(patch_arr_init,shape_arr_init,linelist,hinge_vec_init, hinge_loc_init, std, patch_num, mask_arr, v_xmat, h_xmat, v_ymat, h_ymat, Ml_mat, max_iter, kBT=kBT, animate=animate, sim_num=i, ani_folder=folder)
         elif method == 'weighted sync':
-            patch_arr, shape_arr, hinge_vec, hinge_loc, current_energy = simulate_weightedSync(patch_arr_init,shape_arr_init,linelist,hinge_vec_init, hinge_loc_init, std, patch_num, mask_arr, v_xmat, h_xmat, v_ymat, h_ymat, Ml_mat, max_iter, tol=tol, animate=animate)
+            patch_arr, shape_arr, hinge_vec, hinge_loc, current_energy = simulate_weightedSync(patch_arr_init,shape_arr_init,linelist,hinge_vec_init, hinge_loc_init, std, patch_num, mask_arr, v_xmat, h_xmat, v_ymat, h_ymat, Ml_mat, max_iter, tol=tol, animate=animate, sim_num=i, ani_folder=folder)
         
         for j in range(len(hinge_vec)): #loop through number of movable hinges
             final_hinges[i,j]= hinge_vec[j] #Place all values of the final hinge angles into their corresponding index in final_hinges
@@ -57,7 +79,7 @@ def sim_many(sims, method, patch_arr_init,shape_arr_init,linelist,hinge_vec_init
         
     return final_hinges, final_e
 
-def simulate_greedyDescent(patch_arr_init,shape_arr_init,linelist,hinge_vec_init, hinge_loc_init, std, patch_num, mask_arr, v_xmat, h_xmat, v_ymat, h_ymat, Ml_mat, max_iter, tol=0, animate=False):
+def simulate_greedyDescent(patch_arr_init,shape_arr_init,linelist,hinge_vec_init, hinge_loc_init, std, patch_num, mask_arr, v_xmat, h_xmat, v_ymat, h_ymat, Ml_mat, max_iter, tol=0, animate=False, sim_num=0, ani_folder='GreedyDescentAnimations'):
     """
     Simulate as follows: for each hinge, sample a random angle, then move the hinge by that angle in the favorable direction and calculate the energy change.
     Accept the move with the largest negative energy change, then repeat.
@@ -79,6 +101,8 @@ def simulate_greedyDescent(patch_arr_init,shape_arr_init,linelist,hinge_vec_init
         max_iter: (int) maximum number of iterations to run the simulation
         tol: (float) defined minumum energy change value to be accepted (default zero)
         animate: (bool) whether or not to animate the folding
+        sim_num: (int) for saving animations by simulation number
+        ani_folder: (str) location to save animations
 
     Outputs:
         patch_arr: 2x(2n) array of x and y points that describe the lines of the final magentic patches
@@ -153,7 +177,7 @@ def simulate_greedyDescent(patch_arr_init,shape_arr_init,linelist,hinge_vec_init
         fig, ax = plt.subplots()
         bounds = [None]
         ani = FuncAnimation(fig, update, frames=iteration, interval=100, fargs=(states, linelist, ax, bounds))
-        ani.save("greedyDescent_folding.gif", writer="pillow", fps=10)
+        ani.save(f"{ani_folder}/greedyDescent_folding_{sim_num}.gif", writer="pillow", fps=10)
 
     #print("Current energy: ", current_energy, " Joules")
         
@@ -163,7 +187,7 @@ def simulate_greedyDescent(patch_arr_init,shape_arr_init,linelist,hinge_vec_init
     return patch_arr, shape_arr, hinge_vec, hinge_loc, current_energy
 
 
-def simulate_monteCarlo(patch_arr_init, shape_arr_init, linelist, hinge_vec_init, hinge_loc_init, std, patch_num, mask_arr, v_xmat, h_xmat, v_ymat, h_ymat, Ml_mat, max_iter, kBT=4.11e-21, animate=False):
+def simulate_monteCarlo(patch_arr_init, shape_arr_init, linelist, hinge_vec_init, hinge_loc_init, std, patch_num, mask_arr, v_xmat, h_xmat, v_ymat, h_ymat, Ml_mat, max_iter, kBT=4.11e-21, animate=False, sim_num=0, ani_folder='MonteCarloAnimations'):
     """
     Simulate as follows: randomly pick a hinge, propose a random rotation, and accept/reject based on the Boltzmann distribution.
 
@@ -184,6 +208,8 @@ def simulate_monteCarlo(patch_arr_init, shape_arr_init, linelist, hinge_vec_init
         max_iter: (int) maximum number of iterations to run the simulation
         kBT: (float) kBT constant at whatever temperature (default room temperature)
         animate: (bool) whether or not to store each frame for animation
+        sim_num: (int) for saving animations by simulation number
+        ani_folder: (str) location to save animations
 
     Outputs:
         patch_arr: 2x(2n) array of x and y points that describe the lines of the final magentic patches
@@ -269,7 +295,7 @@ def simulate_monteCarlo(patch_arr_init, shape_arr_init, linelist, hinge_vec_init
         fig, ax = plt.subplots()
         bounds = [None]
         ani = FuncAnimation(fig, update, frames=accepted, interval=100, fargs=(states, linelist, ax, bounds))
-        ani.save("monteCarlo_folding.gif", writer="pillow", fps=10)
+        ani.save(f"{ani_folder}/monteCarlo_folding_{sim_num}.gif", writer="pillow", fps=10)
 
     #print("Current energy:", current_energy, "Joules")
     #print(f"Final acceptance rate: {accepted/max_iter:.3f}")
@@ -277,7 +303,7 @@ def simulate_monteCarlo(patch_arr_init, shape_arr_init, linelist, hinge_vec_init
     return patch_arr, shape_arr, hinge_vec, hinge_loc, current_energy
 
 
-def simulate_weightedSync(patch_arr_init, shape_arr_init, linelist, hinge_vec_init, hinge_loc_init, std, patch_num, mask_arr, v_xmat, h_xmat, v_ymat, h_ymat, Ml_mat, max_iter, tol=0, animate=False):
+def simulate_weightedSync(patch_arr_init, shape_arr_init, linelist, hinge_vec_init, hinge_loc_init, std, patch_num, mask_arr, v_xmat, h_xmat, v_ymat, h_ymat, Ml_mat, max_iter, tol=0, animate=False, sim_num=0, ani_folder='WeightedSyncAnimations'):
     """
     Simulate as follows: sample a random angle, then test each hinge rotation by that angle in both directions, and store the most favorable energy change.
     Then, rotate all hinges simultaneously by a weighted amount (weighted by most favorable energy change). If overlap, reduce all hinge rotations by half and try again.
@@ -299,6 +325,8 @@ def simulate_weightedSync(patch_arr_init, shape_arr_init, linelist, hinge_vec_in
         max_iter: (int) maximum number of iterations to run the simulation
         tol: (float) defined minumum energy change value to be accepted (default zero)
         animate: (bool) whether or not to store each frame for animation
+        sim_num: (int) for saving animations by simulation number
+        ani_folder: (str) location to save animations
 
     Outputs:
         patch_arr: 2x(2n) array of x and y points that describe the lines of the final magentic patches
@@ -427,6 +455,6 @@ def simulate_weightedSync(patch_arr_init, shape_arr_init, linelist, hinge_vec_in
         fig, ax = plt.subplots()
         bounds = [None]
         ani = FuncAnimation(fig, update, frames=iteration, interval=100, fargs=(states, linelist, ax, bounds))
-        ani.save("weightedSync_folding.gif", writer="pillow", fps=10)
+        ani.save(f"{ani_folder}/weightedSync_folding_{sim_num}.gif", writer="pillow", fps=10)
 
     return patch_arr, shape_arr, hinge_vec, hinge_loc, current_energy
