@@ -241,15 +241,29 @@ def shapeplots(shape_arr, linelist, hinge_loc, blocking = False, title = '', sho
         plt.show(block = blocking) #Show plot
 
 def update(frame, states, linelist, ax, bounds):
+    '''
+    Update function for animation, creates each frame of the animation
 
+    Inputs:
+        frame: (int) frame of the animation to create
+        states: (arr) stored states of the simulation run
+        linelist: List of integers describing the number of sides in each shape
+        ax: axis to plot on
+        bounds: bounds of the animation plots
+    '''
     shape_arr, hinge_loc, patch_arr = states[frame]
     
     shapeplots(shape_arr, linelist, hinge_loc, ax=ax, show=False, mag_vecs=patch_arr)
 
     if frame == 0:
-        bounds[0] = ax.axis()
+        init_bounds = ax.axis()
+        max_bound = abs(max(init_bounds, key=abs))
+        bounds[0] = (-max_bound, max_bound, -max_bound, max_bound)
+        ax.axis(bounds[0])
     else:
         ax.axis(bounds[0])
+    
+    
 
 
 def count_shapes(shape_arr):

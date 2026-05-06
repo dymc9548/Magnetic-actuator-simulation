@@ -178,7 +178,7 @@ def simulate_greedyDescent(patch_arr_init,shape_arr_init,linelist,hinge_vec_init
 
     # animate the folding if asked for
     if animate:
-        fig, ax = plt.subplots()
+        fig, ax = plt.subplots(figsize=(10,10))
         bounds = [None]
         ani = FuncAnimation(fig, update, frames=iteration+1, interval=100, fargs=(states, linelist, ax, bounds))
         ani.save(f"{ani_folder}/greedyDescent_folding_{sim_num}.gif", writer="pillow", fps=10)
@@ -297,7 +297,7 @@ def simulate_monteCarlo(patch_arr_init, shape_arr_init, linelist, hinge_vec_init
 
     # animate the folding if asked for
     if animate:
-        fig, ax = plt.subplots()
+        fig, ax = plt.subplots(figsize=(10,10))
         bounds = [None]
         ani = FuncAnimation(fig, update, frames=accepted+1, interval=100, fargs=(states, linelist, ax, bounds))
         ani.save(f"{ani_folder}/monteCarlo_folding_{sim_num}.gif", writer="pillow", fps=10)
@@ -458,7 +458,7 @@ def simulate_weightedSync(patch_arr_init, shape_arr_init, linelist, hinge_vec_in
 
     # animate the folding if asked for
     if animate:
-        fig, ax = plt.subplots()
+        fig, ax = plt.subplots(figsize=(10,10))
         bounds = [None]
         ani = FuncAnimation(fig, update, frames=iteration+1, interval=100, fargs=(states, linelist, ax, bounds))
         ani.save(f"{ani_folder}/weightedSync_folding_{sim_num}.gif", writer="pillow", fps=10)
