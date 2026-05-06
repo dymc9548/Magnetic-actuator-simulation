@@ -145,8 +145,9 @@ def simulate_greedyDescent(patch_arr_init,shape_arr_init,linelist,hinge_vec_init
 
                 if overlap: #if the shapes overlap
                     steric_counter = 0
+                    new_trial_angle = trial_angle
                     while steric_counter<10: # do ten attempts
-                        new_trial_angle = trial_angle/2 # reduce the tested angle by half
+                        new_trial_angle = new_trial_angle/2 # reduce the tested angle by half
                         trial_patch, trial_shape, trial_hinge, trial_hingeloc = rotate_once(patch_arr, shape_arr, linelist, hinge_vec, h, hinge_loc, new_trial_angle, patch_num) #try rotating again
                         overlap = check_overlap(trial_shape, polycount)
                         if overlap: # if still overlapped
@@ -255,8 +256,9 @@ def simulate_monteCarlo(patch_arr_init, shape_arr_init, linelist, hinge_vec_init
 
         if overlap: #if the shapes overlap
             steric_counter = 0
+            new_trial_angle = trial_angle
             while steric_counter<10: # do ten attempts
-                new_trial_angle = trial_angle/2 # reduce the tested angle by half
+                new_trial_angle = new_trial_angle/2 # reduce the tested angle by half
                 trial_patch, trial_shape, trial_hinge, trial_hingeloc = rotate_once(patch_arr, shape_arr, linelist, hinge_vec, h, hinge_loc, new_trial_angle, patch_num) #try rotating again
                 overlap = check_overlap(trial_shape, polycount)
                 if overlap: # if still overlapped
@@ -364,6 +366,9 @@ def simulate_weightedSync(patch_arr_init, shape_arr_init, linelist, hinge_vec_in
         deltaEs = np.zeros(num_hinges)
         signs = np.zeros(num_hinges)
 
+        # initialize scale factor array for when steric hindrance is an issue
+        scale_factor = np.ones(num_hinges)
+
         # evaluate each hinge independently
         for h in range(num_hinges):
 
@@ -379,9 +384,20 @@ def simulate_weightedSync(patch_arr_init, shape_arr_init, linelist, hinge_vec_in
 
                 overlap = check_overlap(trial_shape, polycount) # check for overlap
 
-                # MAY NEED TO ASSESS WHETHER THIS IS PHYSICAL (could reduce angle here, then store reduction for later)
-                if overlap:
-                    continue
+                if overlap: #if the shapes overlap
+                    steric_counter = 0
+                    new_trial_angle = trial_angle
+                    while steric_counter<10: # do ten attempts
+                        new_trial_angle = new_trial_angle/2 # reduce the tested angle by half
+                        scale_factor[h] = scale_factor[h]/2 # save the scaling factor for later
+                        trial_patch, trial_shape, trial_hinge, trial_hingeloc = rotate_once(patch_arr, shape_arr, linelist, hinge_vec, h, hinge_loc, new_trial_angle, patch_num) #try rotating again
+                        overlap = check_overlap(trial_shape, polycount)
+                        if overlap: # if still overlapped
+                            steric_counter += 1 # increment test counter and move to the next angle reduction
+                        else: # if no overlap now with a smaller angle
+                            break
+                    if steric_counter == 10:
+                        continue
 
                 # calculate the energy change
                 trial_energy = energy_math(trial_patch, mask_arr, v_xmat, h_xmat, v_ymat, h_ymat, Ml_mat)
@@ -407,7 +423,7 @@ def simulate_weightedSync(patch_arr_init, shape_arr_init, linelist, hinge_vec_in
         weights = deltaEs / max(deltaEs) # normalization
 
         # construct simultaneous rotation
-        theta_vec = trial_angle * weights * signs # angle array for rotation
+        theta_vec = trial_angle * weights * signs * scale_factor # angle array for rotation
 
         # parameters for keeping track of overlap failure
         success = False
