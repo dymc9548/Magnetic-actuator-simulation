@@ -42,6 +42,7 @@ def sim_many(sims, method, patch_arr_init,shape_arr_init,linelist,hinge_vec_init
 
     final_hinges = np.zeros((sims,len(hinge_vec_init))) #Initialize an array to store all final hinge conformations
     final_e = np.zeros(sims) #Initialize vector to store final energy state of each fold
+    energies = np.empty(sims, dtype=object)
     
     if animate:
         # set the folder
@@ -68,19 +69,21 @@ def sim_many(sims, method, patch_arr_init,shape_arr_init,linelist,hinge_vec_init
     # run the simulation
     for i in range(sims): #For loop runs through all simulations
         if method == 'greedy descent':
-            patch_arr, shape_arr, hinge_vec, hinge_loc, current_energy = simulate_greedyDescent(patch_arr_init,shape_arr_init,linelist,hinge_vec_init, hinge_loc_init, std, patch_num, mask_arr, v_xmat, h_xmat, v_ymat, h_ymat, Ml_mat, max_iter, tol=tol, animate=animate, sim_num=i, ani_folder=folder)
+            patch_arr, shape_arr, hinge_vec, hinge_loc, current_energy, energy = simulate_greedyDescent(patch_arr_init,shape_arr_init,linelist,hinge_vec_init, hinge_loc_init, std, patch_num, mask_arr, v_xmat, h_xmat, v_ymat, h_ymat, Ml_mat, max_iter, tol=tol, animate=animate, sim_num=i, ani_folder=folder)
         elif method == 'monte carlo':
-            patch_arr, shape_arr, hinge_vec, hinge_loc, current_energy = simulate_monteCarlo(patch_arr_init,shape_arr_init,linelist,hinge_vec_init, hinge_loc_init, std, patch_num, mask_arr, v_xmat, h_xmat, v_ymat, h_ymat, Ml_mat, max_iter, kBT=kBT, animate=animate, sim_num=i, ani_folder=folder)
+            patch_arr, shape_arr, hinge_vec, hinge_loc, current_energy, energy = simulate_monteCarlo(patch_arr_init,shape_arr_init,linelist,hinge_vec_init, hinge_loc_init, std, patch_num, mask_arr, v_xmat, h_xmat, v_ymat, h_ymat, Ml_mat, max_iter, kBT=kBT, animate=animate, sim_num=i, ani_folder=folder)
         elif method == 'weighted sync':
-            patch_arr, shape_arr, hinge_vec, hinge_loc, current_energy = simulate_weightedSync(patch_arr_init,shape_arr_init,linelist,hinge_vec_init, hinge_loc_init, std, patch_num, mask_arr, v_xmat, h_xmat, v_ymat, h_ymat, Ml_mat, max_iter, tol=tol, animate=animate, sim_num=i, ani_folder=folder)
+            patch_arr, shape_arr, hinge_vec, hinge_loc, current_energy, energy = simulate_weightedSync(patch_arr_init,shape_arr_init,linelist,hinge_vec_init, hinge_loc_init, std, patch_num, mask_arr, v_xmat, h_xmat, v_ymat, h_ymat, Ml_mat, max_iter, tol=tol, animate=animate, sim_num=i, ani_folder=folder)
         
         for j in range(len(hinge_vec)): #loop through number of movable hinges
             final_hinges[i,j]= hinge_vec[j] #Place all values of the final hinge angles into their corresponding index in final_hinges
             final_e[i] = current_energy #The minimum energy of a fold is stored
         if plot:
             shapeplots(shape_arr, linelist,hinge_loc, mag_vecs = patch_arr)
+
+        energies[i] = energy
         
-    return final_hinges, final_e
+    return final_hinges, final_e, energies
 
 def simulate_greedyDescent(patch_arr_init,shape_arr_init,linelist,hinge_vec_init, hinge_loc_init, std, patch_num, mask_arr, v_xmat, h_xmat, v_ymat, h_ymat, Ml_mat, max_iter, tol=0, animate=False, sim_num=0, ani_folder='GreedyDescentAnimations'):
     """
@@ -127,6 +130,7 @@ def simulate_greedyDescent(patch_arr_init,shape_arr_init,linelist,hinge_vec_init
     polycount = count_shapes(shape_arr)
     states=[]
     states.append((copy.deepcopy(shape_arr),copy.deepcopy(hinge_loc), copy.deepcopy(patch_arr))) # save initial state for animation
+    energy = [current_energy]
 
     for iteration in range(max_iter): # for our iterations
 
@@ -167,6 +171,7 @@ def simulate_greedyDescent(patch_arr_init,shape_arr_init,linelist,hinge_vec_init
 
         if best_move is not None and best_deltaE < tol: # if there was a best move and the energy change was less than some defined minimum
             patch_arr, shape_arr, hinge_vec, hinge_loc, current_energy = best_move # update our stored "current" values
+            energy.append(current_energy)
         else: # no favorable moves
             #print(f"Converged after {iteration} iterations.")
             break
@@ -189,7 +194,7 @@ def simulate_greedyDescent(patch_arr_init,shape_arr_init,linelist,hinge_vec_init
         # plot line for testing commented out typically
         ### shapeplots(shape_arr, linelist, mag_vecs = patch_arr)
 
-    return patch_arr, shape_arr, hinge_vec, hinge_loc, current_energy
+    return patch_arr, shape_arr, hinge_vec, hinge_loc, current_energy, np.array(energy)
 
 
 def simulate_monteCarlo(patch_arr_init, shape_arr_init, linelist, hinge_vec_init, hinge_loc_init, std, patch_num, mask_arr, v_xmat, h_xmat, v_ymat, h_ymat, Ml_mat, max_iter, kBT=4.11e-21, animate=False, sim_num=0, ani_folder='MonteCarloAnimations'):
@@ -231,6 +236,7 @@ def simulate_monteCarlo(patch_arr_init, shape_arr_init, linelist, hinge_vec_init
 
     # Store the current energy of the conformation
     current_energy = energy_math(patch_arr, mask_arr, v_xmat, h_xmat, v_ymat, h_ymat, Ml_mat)
+    energy = [current_energy]
 
     # store hinge number and shape number
     num_hinges = len(hinge_vec)
@@ -287,6 +293,7 @@ def simulate_monteCarlo(patch_arr_init, shape_arr_init, linelist, hinge_vec_init
             hinge_loc = trial_hingeloc
             current_energy = trial_energy
             accepted += 1
+            energy.append(current_energy)
         else:
             continue
 
@@ -307,7 +314,7 @@ def simulate_monteCarlo(patch_arr_init, shape_arr_init, linelist, hinge_vec_init
     #print("Current energy:", current_energy, "Joules")
     #print(f"Final acceptance rate: {accepted/max_iter:.3f}")
 
-    return patch_arr, shape_arr, hinge_vec, hinge_loc, current_energy
+    return patch_arr, shape_arr, hinge_vec, hinge_loc, current_energy, np.array(energy)
 
 
 def simulate_weightedSync(patch_arr_init, shape_arr_init, linelist, hinge_vec_init, hinge_loc_init, std, patch_num, mask_arr, v_xmat, h_xmat, v_ymat, h_ymat, Ml_mat, max_iter, tol=0, animate=False, sim_num=0, ani_folder='WeightedSyncAnimations'):
@@ -351,6 +358,7 @@ def simulate_weightedSync(patch_arr_init, shape_arr_init, linelist, hinge_vec_in
 
     # calculate the current energy
     current_energy = energy_math(patch_arr, mask_arr, v_xmat, h_xmat, v_ymat, h_ymat, Ml_mat)
+    energy = [current_energy]
 
     # store the numer of hinges and shapes
     num_hinges = len(hinge_vec)
@@ -465,6 +473,7 @@ def simulate_weightedSync(patch_arr_init, shape_arr_init, linelist, hinge_vec_in
             hinge_vec = trial_hinge
             hinge_loc = trial_hingeloc
             current_energy = trial_energy
+            energy.append(current_energy)
         else:
             break # if no favorable energy change, stop
 
@@ -479,4 +488,4 @@ def simulate_weightedSync(patch_arr_init, shape_arr_init, linelist, hinge_vec_in
         ani = FuncAnimation(fig, update, frames=iteration+1, interval=100, fargs=(states, linelist, ax, bounds))
         ani.save(f"{ani_folder}/weightedSync_folding_{sim_num}.gif", writer="pillow", fps=10)
 
-    return patch_arr, shape_arr, hinge_vec, hinge_loc, current_energy
+    return patch_arr, shape_arr, hinge_vec, hinge_loc, current_energy, np.array(energy)
