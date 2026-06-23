@@ -143,13 +143,13 @@ def simulate_greedyDescent(patch_arr_init,shape_arr_init,linelist,hinge_vec_init
             trial_angle = np.random.normal(0,std) #pull a trial angle from the Gaussian distribution
 
             for sign in [1,-1]: # test the angle in both directions
-                trial_angle = trial_angle*sign 
-                trial_patch, trial_shape, trial_hinge, trial_hingeloc = rotate_once(patch_arr, shape_arr, linelist, hinge_vec, h, hinge_loc, trial_angle, patch_num) # rotate by the angle
+                test_trial_angle = trial_angle*sign 
+                trial_patch, trial_shape, trial_hinge, trial_hingeloc = rotate_once(patch_arr, shape_arr, linelist, hinge_vec, h, hinge_loc, test_trial_angle, patch_num) # rotate by the angle
                 overlap = check_overlap(trial_shape, polycount)
 
                 if overlap: #if the shapes overlap
                     steric_counter = 0
-                    new_trial_angle = trial_angle
+                    new_trial_angle = test_trial_angle
                     while steric_counter<10: # do ten attempts
                         new_trial_angle = new_trial_angle/2 # reduce the tested angle by half
                         trial_patch, trial_shape, trial_hinge, trial_hingeloc = rotate_once(patch_arr, shape_arr, linelist, hinge_vec, h, hinge_loc, new_trial_angle, patch_num) #try rotating again
