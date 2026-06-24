@@ -428,7 +428,7 @@ def simulate_weightedSync(patch_arr_init, shape_arr_init, linelist, hinge_vec_in
         if total == 0:
             break  # no favorable directions anywhere
 
-        weights = deltaEs / max(deltaEs) # normalization
+        weights = deltaEs / np.sum(deltaEs) #max(deltaEs) # normalization
 
         # construct simultaneous rotation
         theta_vec = trial_angle * weights * signs * scale_factor # angle array for rotation
