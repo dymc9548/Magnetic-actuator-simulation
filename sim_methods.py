@@ -188,6 +188,7 @@ def simulate_greedyDescent(patch_arr_init,shape_arr_init,linelist,hinge_vec_init
         bounds = [None]
         ani = FuncAnimation(fig, update, frames=iteration+1, interval=100, fargs=(states, linelist, ax, bounds))
         ani.save(f"{ani_folder}/greedyDescent_folding_{sim_num}.gif", writer="pillow", fps=10)
+        plt.close(fig)
 
     #print("Current energy: ", current_energy, " Joules")
         
@@ -310,6 +311,7 @@ def simulate_monteCarlo(patch_arr_init, shape_arr_init, linelist, hinge_vec_init
         bounds = [None]
         ani = FuncAnimation(fig, update, frames=accepted+1, interval=100, fargs=(states, linelist, ax, bounds))
         ani.save(f"{ani_folder}/monteCarlo_folding_{sim_num}.gif", writer="pillow", fps=10)
+        plt.close(fig)
 
     #print("Current energy:", current_energy, "Joules")
     #print(f"Final acceptance rate: {accepted/max_iter:.3f}")
@@ -321,6 +323,8 @@ def simulate_weightedSync(patch_arr_init, shape_arr_init, linelist, hinge_vec_in
     """
     Simulate as follows: sample a random angle, then test each hinge rotation by that angle in both directions, and store the most favorable energy change.
     Then, rotate all hinges simultaneously by a weighted amount (weighted by most favorable energy change). If overlap, reduce all hinge rotations by half and try again.
+    If the combined move doesn't overlap but is not energetically favorable, shrink it (same magnitude ratio across hinges) and retry before giving up, since the
+    per-hinge weights are only a linear, single-hinge approximation and the full-size simultaneous move can overshoot into unfavorable territory.
 
     Inputs:
         patch_arr_init: 2x(2n) array of x and y points that describe the lines of the magentic patch. n is number of distinct magnetic domains
@@ -428,7 +432,7 @@ def simulate_weightedSync(patch_arr_init, shape_arr_init, linelist, hinge_vec_in
         if total == 0:
             break  # no favorable directions anywhere
 
-        weights = deltaEs / np.sum(deltaEs) #max(deltaEs) # normalization
+        weights = deltaEs / max(deltaEs) #np.sum(deltaEs) normalization
 
         # construct simultaneous rotation
         theta_vec = trial_angle * weights * signs * scale_factor # angle array for rotation
@@ -461,21 +465,42 @@ def simulate_weightedSync(patch_arr_init, shape_arr_init, linelist, hinge_vec_in
                 scale *= 0.5  # shrink all moves and try again if overlap
 
         if not success:
-            continue  # reject step
+            continue  # reject step, sterically blocked at every scale tried
 
-        # calculate energy change
-        trial_energy = energy_math(trial_patch, mask_arr, v_xmat, h_xmat, v_ymat, h_ymat, Ml_mat)
-        deltaE_total = trial_energy - current_energy
+        # calculate energy change, shrinking the combined move and retrying if it overshoots
+        # into unfavorable territory (the per-hinge weights are only a linear, single-hinge
+        # approximation, so a smaller step in the same direction may still be favorable)
+        accepted_move = False
+        for _ in range(10):
 
-        if deltaE_total < tol: # accept move if the energy change is favorable
-            patch_arr = trial_patch
-            shape_arr = trial_shape
-            hinge_vec = trial_hinge
-            hinge_loc = trial_hingeloc
-            current_energy = trial_energy
-            energy.append(current_energy)
-        else:
-            break # if no favorable energy change, stop
+            trial_energy = energy_math(trial_patch, mask_arr, v_xmat, h_xmat, v_ymat, h_ymat, Ml_mat)
+            deltaE_total = trial_energy - current_energy
+
+            if deltaE_total < tol: # accept move if the energy change is favorable
+                accepted_move = True
+                break
+
+            # shrink the combined move and retry
+            scale *= 0.5
+            trial_patch = copy.deepcopy(patch_arr)
+            trial_shape = copy.deepcopy(shape_arr)
+            trial_hinge = copy.deepcopy(hinge_vec)
+            trial_hingeloc = copy.deepcopy(hinge_loc)
+            for h in range(num_hinges):
+                if theta_vec[h] == 0:
+                    continue
+                trial_patch, trial_shape, trial_hinge, trial_hingeloc = rotate_once(trial_patch, trial_shape, linelist, trial_hinge, h, trial_hingeloc, theta_vec[h] * scale, patch_num)
+
+        if not accepted_move:
+            break # no favorable combined move found even after shrinking: converged
+
+        # accept the move
+        patch_arr = trial_patch
+        shape_arr = trial_shape
+        hinge_vec = trial_hinge
+        hinge_loc = trial_hingeloc
+        current_energy = trial_energy
+        energy.append(current_energy)
 
         states.append((copy.deepcopy(shape_arr),copy.deepcopy(hinge_loc), copy.deepcopy(patch_arr))) # save state for animation
 
@@ -485,7 +510,8 @@ def simulate_weightedSync(patch_arr_init, shape_arr_init, linelist, hinge_vec_in
     if animate:
         fig, ax = plt.subplots(figsize=(10,10))
         bounds = [None]
-        ani = FuncAnimation(fig, update, frames=iteration+1, interval=100, fargs=(states, linelist, ax, bounds))
+        ani = FuncAnimation(fig, update, frames=len(states), interval=100, fargs=(states, linelist, ax, bounds))
         ani.save(f"{ani_folder}/weightedSync_folding_{sim_num}.gif", writer="pillow", fps=10)
+        plt.close(fig)
 
     return patch_arr, shape_arr, hinge_vec, hinge_loc, current_energy, np.array(energy)

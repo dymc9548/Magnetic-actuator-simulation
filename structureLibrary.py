@@ -1,4 +1,32 @@
 def structureLibrary(struc='original'):
+    """
+    Return the predefined chain-of-shapes layout for a named structure.
+
+    Each named structure is a hardcoded dict of shapes making up a chain,
+    used as a starting configuration for the folding simulations.
+
+    Parameters
+    ----------
+    struc : str, optional
+        Name of the structure to build. One of: 'original', 'diamond',
+        'six ring', 'zipper', 'two domain', 'alt corners', 'backbone',
+        'end-middle', 'sym frustration', 'three domain', 'alt dipole',
+        'dumbbell', 'greedy trap'. Defaults to 'original'.
+
+    Returns
+    -------
+    shapes : dict
+        Maps 'shape N' -> [shape_type, size, offset, rotation, patches].
+        - shape_type (str): shape identifier, e.g. 's' for square.
+        - size (int/float): shape size.
+        - offset (int/float): placement offset of this shape from the
+          previous one in the chain.
+        - rotation (int/float): initial rotation angle.
+        - patches (dict): maps 'patch N' -> [corner, size, angle], where
+          corner is one of 'top left', 'top right', 'bottom left',
+          'bottom right', identifying where on the shape the patch sits.
+          May be empty if the shape has no patches.
+    """
 
     if struc == 'original':
         shapes = {
