@@ -38,6 +38,7 @@ def sim_many(sims, method, patch_arr_init,shape_arr_init,linelist,hinge_vec_init
     Outputs:
         final_hinges: An Nxn array of hinge angle values, where N is the number of simulations and n is the number of hinges
         final_e: An N-dim vector of final energies for each simulation, where N is the number of simulations
+        energies: An Nxn object of energies over time, where N is the number of simulations and n is the length of individual simulations (varies) 
     """
 
     final_hinges = np.zeros((sims,len(hinge_vec_init))) #Initialize an array to store all final hinge conformations
