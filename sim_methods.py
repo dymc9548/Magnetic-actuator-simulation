@@ -15,7 +15,7 @@ def sim_many(sims, method, patch_arr_init,shape_arr_init,linelist,hinge_vec_init
 
     Inputs:
         sims: (int) number of simulations to run
-        method: (str) kind of simulation to use; can be 'greedy descent', 'monte carlo', 'weighted sync'
+        method: (str) kind of simulation to use; can be 'greedy descent', 'monte carlo', 'weighted sync', 'hybrid'
         patch_arr_init: 2x(2n) array of x and y points that describe the lines of the magentic patch. n is number of distinct magnetic domains
         shape_arr_init: 2x(2n*s) array of x and y points that describe the lines enclosing each shape. n is number of shapes. s is number of sides on that shape
         linelist: List of integers describing the number of sides in each shape
@@ -63,6 +63,11 @@ def sim_many(sims, method, patch_arr_init,shape_arr_init,linelist,hinge_vec_init
             if os.path.exists(folder):
                 shutil.rmtree(folder)
             os.makedirs(folder)
+        elif method == 'hybrid':
+            folder = 'HybridAnimations'
+            if os.path.exists(folder):
+                shutil.rmtree(folder)
+            os.makedirs(folder)
     else:
         folder = ''
 
@@ -74,7 +79,9 @@ def sim_many(sims, method, patch_arr_init,shape_arr_init,linelist,hinge_vec_init
             patch_arr, shape_arr, hinge_vec, hinge_loc, current_energy, energy = simulate_monteCarlo(patch_arr_init,shape_arr_init,linelist,hinge_vec_init, hinge_loc_init, std, patch_num, mask_arr, v_xmat, h_xmat, v_ymat, h_ymat, Ml_mat, max_iter, kBT=kBT, animate=animate, sim_num=i, ani_folder=folder)
         elif method == 'weighted sync':
             patch_arr, shape_arr, hinge_vec, hinge_loc, current_energy, energy = simulate_weightedSync(patch_arr_init,shape_arr_init,linelist,hinge_vec_init, hinge_loc_init, std, patch_num, mask_arr, v_xmat, h_xmat, v_ymat, h_ymat, Ml_mat, max_iter, tol=tol, animate=animate, sim_num=i, ani_folder=folder)
-        
+        elif method == 'hybrid':
+            patch_arr, shape_arr, hinge_vec, hinge_loc, current_energy, energy = simulate_hybrid(patch_arr_init,shape_arr_init,linelist,hinge_vec_init, hinge_loc_init, std, patch_num, mask_arr, v_xmat, h_xmat, v_ymat, h_ymat, Ml_mat, max_iter, tol=tol, animate=animate, sim_num=i, ani_folder=folder)
+
         for j in range(len(hinge_vec)): #loop through number of movable hinges
             final_hinges[i,j]= hinge_vec[j] #Place all values of the final hinge angles into their corresponding index in final_hinges
             final_e[i] = current_energy #The minimum energy of a fold is stored
@@ -85,7 +92,7 @@ def sim_many(sims, method, patch_arr_init,shape_arr_init,linelist,hinge_vec_init
         
     return final_hinges, final_e, energies
 
-def simulate_greedyDescent(patch_arr_init,shape_arr_init,linelist,hinge_vec_init, hinge_loc_init, std, patch_num, mask_arr, v_xmat, h_xmat, v_ymat, h_ymat, Ml_mat, max_iter, tol=0, animate=False, sim_num=0, ani_folder='GreedyDescentAnimations'):
+def simulate_greedyDescent(patch_arr_init,shape_arr_init,linelist,hinge_vec_init, hinge_loc_init, std, patch_num, mask_arr, v_xmat, h_xmat, v_ymat, h_ymat, Ml_mat, max_iter, tol=0, animate=False, sim_num=0, ani_folder='GreedyDescentAnimations', return_states=False):
     """
     Simulate as follows: for each hinge, sample a random angle, then move the hinge by that angle in the favorable direction and calculate the energy change.
     Accept the move with the largest negative energy change, then repeat.
@@ -109,6 +116,7 @@ def simulate_greedyDescent(patch_arr_init,shape_arr_init,linelist,hinge_vec_init
         animate: (bool) whether or not to animate the folding
         sim_num: (int) for saving animations by simulation number
         ani_folder: (str) location to save animations
+        return_states: (bool) whether to also return the list of per-iteration states (for stitching into a combined animation)
 
     Outputs:
         patch_arr: 2x(2n) array of x and y points that describe the lines of the final magentic patches
@@ -116,6 +124,7 @@ def simulate_greedyDescent(patch_arr_init,shape_arr_init,linelist,hinge_vec_init
         hinge_vec: Vector of final hinge angles
         hinge_loc: 2x(m-1) array of x and y points that contain final hinge locations
         current_energy: (float) Energy at the end of the simulation
+        states: (list, only if return_states) list of (shape_arr, hinge_loc, patch_arr) tuples for each accepted iteration
     """
 
     # Deepcopy initial state
@@ -195,6 +204,8 @@ def simulate_greedyDescent(patch_arr_init,shape_arr_init,linelist,hinge_vec_init
         # plot line for testing commented out typically
         ### shapeplots(shape_arr, linelist, mag_vecs = patch_arr)
 
+    if return_states:
+        return patch_arr, shape_arr, hinge_vec, hinge_loc, current_energy, np.array(energy), states
     return patch_arr, shape_arr, hinge_vec, hinge_loc, current_energy, np.array(energy)
 
 
@@ -319,7 +330,7 @@ def simulate_monteCarlo(patch_arr_init, shape_arr_init, linelist, hinge_vec_init
     return patch_arr, shape_arr, hinge_vec, hinge_loc, current_energy, np.array(energy)
 
 
-def simulate_weightedSync(patch_arr_init, shape_arr_init, linelist, hinge_vec_init, hinge_loc_init, std, patch_num, mask_arr, v_xmat, h_xmat, v_ymat, h_ymat, Ml_mat, max_iter, tol=0, animate=False, sim_num=0, ani_folder='WeightedSyncAnimations'):
+def simulate_weightedSync(patch_arr_init, shape_arr_init, linelist, hinge_vec_init, hinge_loc_init, std, patch_num, mask_arr, v_xmat, h_xmat, v_ymat, h_ymat, Ml_mat, max_iter, tol=0, animate=False, sim_num=0, ani_folder='WeightedSyncAnimations', return_states=False):
     """
     Simulate as follows: sample a random angle, then test each hinge rotation by that angle in both directions, and store the most favorable energy change.
     Then, rotate all hinges simultaneously by a weighted amount (weighted by most favorable energy change). If overlap, reduce all hinge rotations by half and try again.
@@ -345,6 +356,7 @@ def simulate_weightedSync(patch_arr_init, shape_arr_init, linelist, hinge_vec_in
         animate: (bool) whether or not to store each frame for animation
         sim_num: (int) for saving animations by simulation number
         ani_folder: (str) location to save animations
+        return_states: (bool) whether to also return the list of per-iteration states (for stitching into a combined animation)
 
     Outputs:
         patch_arr: 2x(2n) array of x and y points that describe the lines of the final magentic patches
@@ -352,8 +364,9 @@ def simulate_weightedSync(patch_arr_init, shape_arr_init, linelist, hinge_vec_in
         hinge_vec: Vector of final hinge angles
         hinge_loc: 2x(m-1) array of x and y points that contain final hinge locations
         current_energy: (float) Energy at the end of the simulation
+        states: (list, only if return_states) list of (shape_arr, hinge_loc, patch_arr) tuples for each accepted iteration
     """
-    
+
     # Deep copy initial state
     patch_arr = copy.deepcopy(patch_arr_init)
     shape_arr = copy.deepcopy(shape_arr_init)
@@ -514,4 +527,60 @@ def simulate_weightedSync(patch_arr_init, shape_arr_init, linelist, hinge_vec_in
         ani.save(f"{ani_folder}/weightedSync_folding_{sim_num}.gif", writer="pillow", fps=10)
         plt.close(fig)
 
+    if return_states:
+        return patch_arr, shape_arr, hinge_vec, hinge_loc, current_energy, np.array(energy), states
     return patch_arr, shape_arr, hinge_vec, hinge_loc, current_energy, np.array(energy)
+
+
+def simulate_hybrid(patch_arr_init, shape_arr_init, linelist, hinge_vec_init, hinge_loc_init, std, patch_num, mask_arr, v_xmat, h_xmat, v_ymat, h_ymat, Ml_mat, max_iter, tol=0, animate=False, sim_num=0, ani_folder='HybridAnimations'):
+    """
+    Simulate as follows: run weighted sync until it can no longer find a favorable synchronized move, then hand the
+    resulting folded state to greedy descent to locally refine it to its nearest energy minimum.
+
+    Inputs:
+        patch_arr_init: 2x(2n) array of x and y points that describe the lines of the magentic patch. n is number of distinct magnetic domains
+        shape_arr_init: 2x(2n*s) array of x and y points that describe the lines enclosing each shape. n is number of shapes. s is number of sides on that shape
+        linelist: List of integers describing the number of sides in each shape
+        hinge_vec_init: Vector of hinge angles. Interdipolar angle between each shape
+        hinge_loc_init: 2x(m-1) array of x and y points that contain hinge locations. m is the number of shapes
+        std: (float) standard deviation of the distribution from which to pull the rotation angle
+        patch_num: n-dim list of patches per shape, where n is number of shapes
+        mask_arr: An special nxn upper diagonal matrix of 0's, 1's, and -1's useful for the energy calculation. n is 2x number of shapes
+        v_xmat: An nx2 array of 1's
+        h_xmat: A 2xn array of -1's
+        v_ymat: An nx2 array of 1's
+        h_ymat: A 2xn array of -1's
+        Ml_mat: An nxn array that contains combinations of magnetizations and lengths
+        max_iter: (int) maximum number of iterations to run each stage of the simulation
+        tol: (float) defined minumum energy change value to be accepted (default zero)
+        animate: (bool) whether or not to store each frame for animation
+        sim_num: (int) for saving animations by simulation number
+        ani_folder: (str) location to save animations
+
+    Outputs:
+        patch_arr: 2x(2n) array of x and y points that describe the lines of the final magentic patches
+        shape_arr: 2x(2n*s) array of x and y points that describe the lines enclosing each final shape
+        hinge_vec: Vector of final hinge angles
+        hinge_loc: 2x(m-1) array of x and y points that contain final hinge locations
+        current_energy: (float) Energy at the end of the simulation
+    """
+
+    # run weighted sync until it converges (animation of this stage alone is suppressed; frames are stitched into one combined gif below)
+    patch_arr, shape_arr, hinge_vec, hinge_loc, current_energy, ws_energy, ws_states = simulate_weightedSync(patch_arr_init, shape_arr_init, linelist, hinge_vec_init, hinge_loc_init, std, patch_num, mask_arr, v_xmat, h_xmat, v_ymat, h_ymat, Ml_mat, max_iter, tol=tol, animate=False, sim_num=sim_num, ani_folder=ani_folder, return_states=True)
+
+    # refine the weighted sync result with greedy descent
+    patch_arr, shape_arr, hinge_vec, hinge_loc, current_energy, gd_energy, gd_states = simulate_greedyDescent(patch_arr, shape_arr, linelist, hinge_vec, hinge_loc, std, patch_num, mask_arr, v_xmat, h_xmat, v_ymat, h_ymat, Ml_mat, max_iter, tol=tol, animate=False, sim_num=sim_num, ani_folder=ani_folder, return_states=True)
+
+    # stitch the two energy/state traces together, dropping the duplicate frame at the greedy descent handoff point
+    energy = np.concatenate([ws_energy, gd_energy[1:]])
+    states = ws_states + gd_states[1:]
+
+    # animate the full weighted-sync-then-greedy-descent folding as a single gif
+    if animate:
+        fig, ax = plt.subplots(figsize=(10,10))
+        bounds = [None]
+        ani = FuncAnimation(fig, update, frames=len(states), interval=100, fargs=(states, linelist, ax, bounds))
+        ani.save(f"{ani_folder}/hybrid_folding_{sim_num}.gif", writer="pillow", fps=10)
+        plt.close(fig)
+
+    return patch_arr, shape_arr, hinge_vec, hinge_loc, current_energy, energy
