@@ -8,7 +8,7 @@ def structureLibrary(struc='original'):
     Parameters
     ----------
     struc : str, optional
-        Name of the structure to build. One of: 'original', 'diamond',
+        Name of the structure to build. One of: 'original', 'original_8', 'diamond',
         'six ring', 'zipper', 'two domain', 'alt corners', 'backbone',
         'end-middle', 'sym frustration', 'three domain', 'alt dipole',
         'dumbbell', 'greedy trap'. Defaults to 'original'.
@@ -53,6 +53,32 @@ def structureLibrary(struc='original'):
                          {'patch 1': ['bottom right', 4, 0]}], 
             'shape 11': ['s', 10, 6, 0, 
                          {'patch 1': ['bottom right', 4, 0]}]}
+
+    elif struc == 'original_8':
+        shapes = {
+            'shape 1': ['s', 10, 0, 0, 
+                        {'patch 1': ['top right', 8, 1]}], 
+            'shape 2':['s', 10, 6, 0, 
+                        {'patch 1': ['top left', 8, 1], 
+                         'patch 2': ['bottom right', 8, 1]}], 
+            'shape 3': ['s', 10, 6, 0, 
+                        {'patch 1': ['bottom left', 8, 1]}], 
+            'shape 4': ['s', 10, 6, 0, 
+                        {'patch 1': ['bottom left', 8, 1]}], 
+            'shape 5': ['s', 10, 6, 0, 
+                        {'patch 1': ['top left', 8, 1]}], 
+            'shape 6': ['s', 10, 6, 0, 
+                        {'patch 1': ['bottom right', 8, 1]}], 
+            'shape 7': ['s', 10, 6, 0, 
+                        {'patch 1': ['bottom right', 8, 1]}], 
+            'shape 8': ['s', 10, 6, 0, 
+                        {'patch 1': ['bottom right', 8, 1]}], 
+            'shape 9': ['s', 10, 6, 0, 
+                        {'patch 1': ['bottom right', 8, 1]}], 
+            'shape 10': ['s', 10, 6, 0, 
+                         {'patch 1': ['bottom right', 8, 1]}], 
+            'shape 11': ['s', 10, 6, 0, 
+                         {'patch 1': ['bottom right', 8, 1]}]}
 
     elif struc == 'diamond':
         shapes = {
