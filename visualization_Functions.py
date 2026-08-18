@@ -10,11 +10,27 @@ from sklearn.metrics import silhouette_score
 from sklearn.metrics import davies_bouldin_score
 
 
+def _unpack_offset(offset):
+    '''Splits a shape's offset field into (spacing, vertical_shift, nominal_spacing).
+    Plain structures use a scalar spacing (nominal_spacing == spacing, no vertical shift).
+    perturb_structure (in structureLibrary.py) may replace it with a
+    (spacing, vertical_shift, nominal_spacing) triple: the shape is actually placed using
+    (spacing, vertical_shift), while the hinge/pivot point feeding into it is placed using
+    only nominal_spacing, relative to the *previous* shape's actual position -- i.e. the
+    hinge stays fixed to the previous shape regardless of this shape's own fabrication slop.'''
+    if isinstance(offset, (tuple, list, np.ndarray)):
+        d, dy, d_nom = offset
+        return d, dy, d_nom
+    return offset, 0.0, offset
+
+
 def generate(shapes):
     '''Generates the desired shapes in 2D space. The shapes have no overlap and are an idealized version of the structure.
     Inputs:
-        shapes: Dictionary object where first entry is the shape, second entry is shape length, third entry is shape spacing from previous, fourth entry is uncertainty in spacing,
-                and fifth entry is a dictionary of patches (where the first entry is patch location, secondis patch length, third is patch offset from edge)
+        shapes: Dictionary object where first entry is the shape, second entry is shape length, third entry is shape spacing from previous
+                (a plain number, or a (spacing, vertical_shift) pair if perturb_structure has been applied), fourth entry is the initial
+                rotation offset (deg) added to the incoming hinge's nominal 180 deg angle, and fifth entry is a dictionary of patches
+                (where the first entry is patch location, second is patch length, third is patch offset from edge)
             example: shapes = {'shape 1': ['s', 10, 6, 0, {'patch 1': ['top right', 4, 0]}], 'shape 2':['s', 10, 6, 0, {'patch 1': ['top left', 4, 0], 'patch 2': ['bottom right', 4, 0]}], 'shape 3': ['s', 10, 6, 0, {'patch 1': ['bottom left', 4, 0]}]}
     Return:
         hinge_vec: Vector of hinge angles. Interdipolar angle between each shape
@@ -28,6 +44,8 @@ def generate(shapes):
     origin = [0,0] #the origin is at 0,0
     xi = origin[0] #Initialize the x-coordiante of the initial point for each shape
     yi = origin[1] #Initialize the y-coordinate of the initial point for each shape
+    xf_prev = origin[0] #right edge of the previous shape's *actual* placement; hinges are placed relative to this, never to this shape's own fabrication slop
+    yi_prev = origin[1] #baseline of the previous shape's *actual* placement
 
     indexvec = ['shape ']*len(shapes) #Create vector to hold dictionary indices
     shape_arr = np.zeros((2,2)) #Initialize shape_arr
@@ -42,15 +60,17 @@ def generate(shapes):
     for i in range(len(shapes)):
         
         l = shapes[indexvec[i]][1] #Store the edge length of a cube as a single variable to be referenced for creating all shapes
-        d = shapes[indexvec[i]][2] #Store the unit spacing between cubes as a single variable
+        d, dy, d_nom = _unpack_offset(shapes[indexvec[i]][2]) #Actual spacing/vertical shift used to place this shape, and the nominal spacing used to place the hinge feeding it
         patches = shapes[indexvec[i]][4] #Store the patches dictionary
         patch_indexvec = ['patch ']*len(patches) #Create vector to hold dictionary indices
         patch_num.append(len(patches)) #append the number of patches to the patch list
 
-        #Store the hinge location
+        #Place this shape, and the hinge feeding into it, relative to the *previous* shape's actual position
         if i > 0: #As long as we aren't on the first shape
-            hx = xi - d/2 #hinge x-coordinate is halfway back to the first shape
-            hy = yi + l/2 #hinge y-coordinate is halfway up the shape
+            xi = xf_prev + d #this shape's actual origin: previous shape's actual right edge, plus this hinge's (possibly fabricated) spacing
+            yi = yi_prev + dy #this shape's actual baseline, from any fabricated vertical hinge shift
+            hx = xf_prev + d_nom/2 #hinge/pivot stays fixed to the previous shape's actual position via the *nominal* spacing, regardless of this shape's own fabrication slop
+            hy = yi_prev + l/2 #hinge y-coordinate is halfway up the shape, from the previous shape's actual baseline
             if i == 1:
                 hinge_loc = np.array([hx, hy])[:,None] #make the hinge array a column vector for easy rotation
             else:
@@ -90,14 +110,14 @@ def generate(shapes):
                 if patches[patch_indexvec[j]][0] == 'top right':
                     pxi = xi + l - plength - poffset
                     pxf = pxi + plength
-                    pyi = l
-                    pyf = l
+                    pyi = yi + l
+                    pyf = yi + l
 
                 elif patches[patch_indexvec[j]][0] == 'top left':
                     pxi = xi + poffset
                     pxf = pxi + plength
-                    pyi = l
-                    pyf = l
+                    pyi = yi + l
+                    pyf = yi + l
                     
                 elif patches[patch_indexvec[j]][0] == 'bottom right': 
                     pxi = xi + l - plength - poffset
@@ -122,15 +142,41 @@ def generate(shapes):
                     patch_arr = np.hstack((patch_arr, np.array(([float(pxi)],[float(pyi)]))))
                     patch_arr = np.hstack((patch_arr, np.array(([float(pxf)],[float(pyf)]))))
                 
-            if i < len(shapes)-1: #As long as it's before the last shape
-                next_d = shapes[indexvec[i+1]][2] #Store the unit spacing between cubes as a single variable
-                xi = xf+next_d #Update the origin position for generating the next shape
+            xf_prev = xf #Save this shape's actual right edge, for placing the next hinge and shape
+            yi_prev = yi #Save this shape's actual baseline, for placing the next hinge and shape
 
         #else:
             #add code for other shapes here
 
     hinge_vec = np.ones(len(shapes)-1)*180 #Generate vector of hinges. These represent the interdipolar angle between each of the cubes at
                                            #a hinge point.
+
+    #Apply any fabricated initial-rotation offset by actually rotating the structure about each such hinge, so the initial geometry
+    #(and hence starting energy, and any plot of it) reflects the offset -- not just the reported hinge_vec label. If the full offset
+    #would make the (unfolded) structure overlap itself, back off toward the nominal angle in halving steps -- same approach used to
+    #resolve steric clashes during the simulations themselves -- and if no non-overlapping angle is found, leave that hinge unperturbed.
+    polycount = count_shapes(shape_arr) #Reference shape count from the (overlap-free) unrotated layout
+    for h in range(len(shapes)-1):
+        offset = shapes[indexvec[h+1]][3]
+        if offset != 0:
+            trial_angle = offset
+            trial_patch, trial_shape, trial_hinge, trial_hingeloc = rotate_once(patch_arr, shape_arr, linelist, hinge_vec, h, hinge_loc, trial_angle, patch_num)
+            overlap = check_overlap(trial_shape, polycount)
+
+            if overlap:
+                steric_counter = 0
+                while steric_counter < 10: #try progressively smaller angles toward nominal
+                    trial_angle /= 2
+                    trial_patch, trial_shape, trial_hinge, trial_hingeloc = rotate_once(patch_arr, shape_arr, linelist, hinge_vec, h, hinge_loc, trial_angle, patch_num)
+                    overlap = check_overlap(trial_shape, polycount)
+                    if overlap:
+                        steric_counter += 1
+                    else:
+                        break
+                if steric_counter == 10: #never found a non-overlapping angle -- leave this hinge at its nominal (unperturbed) angle
+                    continue
+
+            patch_arr, shape_arr, hinge_vec, hinge_loc = trial_patch, trial_shape, trial_hinge, trial_hingeloc
 
     return hinge_vec,hinge_loc,shape_arr,linelist,patch_arr,patch_num
 

@@ -1,3 +1,7 @@
+import copy
+import numpy as np
+
+
 def structureLibrary(struc='original'):
     """
     Return the predefined chain-of-shapes layout for a named structure.
@@ -419,3 +423,65 @@ def structureLibrary(struc='original'):
     # elif struc == :
 
     return shapes
+
+
+def _sample_disk(radius, rng):
+    '''Samples one point uniformly at random from within a disk of the given radius, centered on the origin.
+    The x-component is folded to be non-negative, so the actual hinge spacing (nominal + dx) can only grow
+    or stay the same relative to nominal, never shrink.'''
+    theta = rng.uniform(0, 2 * np.pi)
+    r = radius * np.sqrt(rng.uniform(0, 1))
+    return abs(r * np.cos(theta)), r * np.sin(theta)
+
+
+def perturb_structure(shapes, patch_offset_std=0.0, patch_offset_mean=0.0,
+                       hinge_radius=0.0, hinge_rotation_std=0.0, hinge_rotation_mean=0.0,
+                       rng=None):
+    '''
+    Applies fabrication-uncertainty noise to a structure dict from structureLibrary().
+    All perturbations default to off, so perturb_structure(shapes) with no other
+    arguments returns a structure that generates identically to the input.
+
+    Inputs:
+        shapes: structure dict, as returned by structureLibrary()
+        patch_offset_std, patch_offset_mean: (float) std/mean of the Gaussian noise added to
+            each patch's offset from its corner. The result is clamped to
+            [0, shape size - patch size] so the patch can't run off the shape's edge.
+        hinge_radius: (float) radius of the disk within which each shape's actual placement
+            may land relative to its hinge point. The hinge/pivot itself stays fixed to the
+            *previous* shape (like a monkey bar bolted to it); this shape (and everything
+            downstream of it) is offset from that fixed pivot by a random point sampled
+            uniformly over the disk's area -- shifting it left/right and up/down. 0 disables this.
+        hinge_rotation_std, hinge_rotation_mean: (float, degrees) std/mean of the Gaussian noise
+            added to each hinge's initial angle, via the shape dict's rotation field. A std of 0
+            (the default) leaves hinges at the nominal flat (180 deg) starting angle.
+        rng: numpy.random.Generator, optional. A fresh default_rng() is used if omitted; pass a
+            seeded Generator for reproducible perturbed structures.
+
+    Return:
+        dict: a deep copy of shapes with the requested noise applied
+    '''
+    if rng is None:
+        rng = np.random.default_rng()
+
+    perturbed = copy.deepcopy(shapes)
+    keys = list(perturbed.keys())
+
+    for i, key in enumerate(keys):
+        shape_type, size, offset, rotation, patches = perturbed[key]
+
+        if patch_offset_std > 0 or patch_offset_mean != 0:
+            for patch in patches.values():
+                corner, plength, poffset = patch
+                poffset += rng.normal(patch_offset_mean, patch_offset_std)
+                patch[2] = min(max(poffset, 0), size - plength)
+
+        if i > 0: # shape 1 has no incoming hinge, so hinge perturbations don't apply to it
+            if hinge_radius > 0:
+                dx, dy = _sample_disk(hinge_radius, rng)
+                perturbed[key][2] = (offset + dx, dy, offset) # (actual spacing, actual vertical shift, nominal spacing) -- generate() places the hinge from nominal spacing only, and this shape from the actual values
+
+            if hinge_rotation_std > 0 or hinge_rotation_mean != 0:
+                perturbed[key][3] = rotation + rng.normal(hinge_rotation_mean, hinge_rotation_std)
+
+    return perturbed

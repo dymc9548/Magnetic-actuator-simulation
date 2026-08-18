@@ -3,13 +3,14 @@ import matplotlib.pyplot as plt
 import shapely as sp
 from shapely.ops import polygonize
 import copy
-from visualization_functions import energy_math, count_shapes, rotate_once, check_overlap, shapeplots, update
+from visualization_functions import energy_math, count_shapes, rotate_once, check_overlap, shapeplots, update, generate
+from structureLibrary import perturb_structure
 from matplotlib.animation import FuncAnimation
 import os
 import shutil
 
 
-def sim_many(sims, method, patch_arr_init,shape_arr_init,linelist,hinge_vec_init, hinge_loc_init, std, patch_num, mask_arr, v_xmat, h_xmat, v_ymat, h_ymat, Ml_mat, max_iter, kBT=4.11e-21, tol=0, plot=False, animate=False):
+def sim_many(sims, method, patch_arr_init,shape_arr_init,linelist,hinge_vec_init, hinge_loc_init, std, patch_num, mask_arr, v_xmat, h_xmat, v_ymat, h_ymat, Ml_mat, max_iter, kBT=4.11e-21, tol=0, plot=False, animate=False, shapes=None, perturb_kwargs=None, rng=None):
     """
     Simulate many times and store each simulation's hinge vector and final energy
 
@@ -34,12 +35,26 @@ def sim_many(sims, method, patch_arr_init,shape_arr_init,linelist,hinge_vec_init
         tol: (float) defined minumum energy change value to be accepted (default zero)
         plot: (bool) whether or not to plot each sim
         animate: (bool) whether or not to save the animation of the final sim
+        shapes: (dict, optional) structure dict from structureLibrary(), the same input that was used to
+            build patch_arr_init/shape_arr_init/etc via generate(). If given, every trial draws its own
+            fabrication-perturbed structure with perturb_structure and regenerates its initial geometry
+            from it, instead of every trial starting from the single shared *_init state. patch_arr_init,
+            shape_arr_init, linelist, hinge_vec_init, hinge_loc_init, and patch_num are still required
+            arguments in this case (used only to size final_hinges), but are otherwise ignored per-trial.
+        perturb_kwargs: (dict, optional) keyword arguments forwarded to perturb_structure on every trial
+            (e.g. patch_offset_std, hinge_radius, hinge_rotation_std). Ignored if shapes is None.
+        rng: (numpy.random.Generator, optional) shared source of randomness for the per-trial structure
+            perturbations, so a run is reproducible. A fresh default_rng() is used if omitted. Ignored if
+            shapes is None.
 
     Outputs:
         final_hinges: An Nxn array of hinge angle values, where N is the number of simulations and n is the number of hinges
         final_e: An N-dim vector of final energies for each simulation, where N is the number of simulations
-        energies: An Nxn object of energies over time, where N is the number of simulations and n is the length of individual simulations (varies) 
+        energies: An Nxn object of energies over time, where N is the number of simulations and n is the length of individual simulations (varies)
     """
+    if shapes is not None and rng is None:
+        rng = np.random.default_rng()
+    perturb_kwargs = perturb_kwargs or {}
 
     final_hinges = np.zeros((sims,len(hinge_vec_init))) #Initialize an array to store all final hinge conformations
     final_e = np.zeros(sims) #Initialize vector to store final energy state of each fold
@@ -74,14 +89,21 @@ def sim_many(sims, method, patch_arr_init,shape_arr_init,linelist,hinge_vec_init
 
     # run the simulation
     for i in range(sims): #For loop runs through all simulations
+
+        if shapes is not None: #Draw a fresh fabrication-perturbed structure for this trial, instead of reusing the single shared initial state
+            trial_shapes = perturb_structure(shapes, rng=rng, **perturb_kwargs)
+            trial_hinge_vec, trial_hinge_loc, trial_shape_arr, trial_linelist, trial_patch_arr, trial_patch_num = generate(trial_shapes)
+        else:
+            trial_patch_arr, trial_shape_arr, trial_linelist, trial_hinge_vec, trial_hinge_loc, trial_patch_num = patch_arr_init, shape_arr_init, linelist, hinge_vec_init, hinge_loc_init, patch_num
+
         if method == 'greedy descent':
-            patch_arr, shape_arr, hinge_vec, hinge_loc, current_energy, energy = simulate_greedyDescent(patch_arr_init,shape_arr_init,linelist,hinge_vec_init, hinge_loc_init, std, patch_num, mask_arr, v_xmat, h_xmat, v_ymat, h_ymat, Ml_mat, max_iter, tol=tol, animate=animate, sim_num=i, ani_folder=folder)
+            patch_arr, shape_arr, hinge_vec, hinge_loc, current_energy, energy = simulate_greedyDescent(trial_patch_arr,trial_shape_arr,trial_linelist,trial_hinge_vec, trial_hinge_loc, std, trial_patch_num, mask_arr, v_xmat, h_xmat, v_ymat, h_ymat, Ml_mat, max_iter, tol=tol, animate=animate, sim_num=i, ani_folder=folder)
         elif method == 'monte carlo':
-            patch_arr, shape_arr, hinge_vec, hinge_loc, current_energy, energy = simulate_monteCarlo(patch_arr_init,shape_arr_init,linelist,hinge_vec_init, hinge_loc_init, std, patch_num, mask_arr, v_xmat, h_xmat, v_ymat, h_ymat, Ml_mat, max_iter, kBT=kBT, animate=animate, sim_num=i, ani_folder=folder)
+            patch_arr, shape_arr, hinge_vec, hinge_loc, current_energy, energy = simulate_monteCarlo(trial_patch_arr,trial_shape_arr,trial_linelist,trial_hinge_vec, trial_hinge_loc, std, trial_patch_num, mask_arr, v_xmat, h_xmat, v_ymat, h_ymat, Ml_mat, max_iter, kBT=kBT, animate=animate, sim_num=i, ani_folder=folder)
         elif method == 'weighted sync':
-            patch_arr, shape_arr, hinge_vec, hinge_loc, current_energy, energy = simulate_weightedSync(patch_arr_init,shape_arr_init,linelist,hinge_vec_init, hinge_loc_init, std, patch_num, mask_arr, v_xmat, h_xmat, v_ymat, h_ymat, Ml_mat, max_iter, tol=tol, animate=animate, sim_num=i, ani_folder=folder)
+            patch_arr, shape_arr, hinge_vec, hinge_loc, current_energy, energy = simulate_weightedSync(trial_patch_arr,trial_shape_arr,trial_linelist,trial_hinge_vec, trial_hinge_loc, std, trial_patch_num, mask_arr, v_xmat, h_xmat, v_ymat, h_ymat, Ml_mat, max_iter, tol=tol, animate=animate, sim_num=i, ani_folder=folder)
         elif method == 'hybrid':
-            patch_arr, shape_arr, hinge_vec, hinge_loc, current_energy, energy = simulate_hybrid(patch_arr_init,shape_arr_init,linelist,hinge_vec_init, hinge_loc_init, std, patch_num, mask_arr, v_xmat, h_xmat, v_ymat, h_ymat, Ml_mat, max_iter, tol=tol, animate=animate, sim_num=i, ani_folder=folder)
+            patch_arr, shape_arr, hinge_vec, hinge_loc, current_energy, energy = simulate_hybrid(trial_patch_arr,trial_shape_arr,trial_linelist,trial_hinge_vec, trial_hinge_loc, std, trial_patch_num, mask_arr, v_xmat, h_xmat, v_ymat, h_ymat, Ml_mat, max_iter, tol=tol, animate=animate, sim_num=i, ani_folder=folder)
 
         for j in range(len(hinge_vec)): #loop through number of movable hinges
             final_hinges[i,j]= hinge_vec[j] #Place all values of the final hinge angles into their corresponding index in final_hinges
