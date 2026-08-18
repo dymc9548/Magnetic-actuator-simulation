@@ -64,23 +64,23 @@ def sim_many(sims, method, patch_arr_init,shape_arr_init,linelist,hinge_vec_init
         # set the folder
         if method == 'greedy descent':
             # make a new empty folder for animation saves
-            folder = 'GreedyDescentAnimations'
+            folder = 'Animations/GreedyDescentAnimations'
             if os.path.exists(folder):
                 shutil.rmtree(folder)
             os.makedirs(folder)
         elif method == 'monte carlo':
             # make a new empty folder for animation saves
-            folder = 'MonteCarloAnimations'
+            folder = 'Animations/MonteCarloAnimations'
             if os.path.exists(folder):
                 shutil.rmtree(folder)
             os.makedirs(folder)
         elif method == 'weighted sync':
-            folder = 'WeightedSyncAnimations'
+            folder = 'Animations/WeightedSyncAnimations'
             if os.path.exists(folder):
                 shutil.rmtree(folder)
             os.makedirs(folder)
         elif method == 'hybrid':
-            folder = 'HybridAnimations'
+            folder = 'Animations/HybridAnimations'
             if os.path.exists(folder):
                 shutil.rmtree(folder)
             os.makedirs(folder)
