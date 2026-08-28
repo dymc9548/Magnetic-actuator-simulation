@@ -11,17 +11,18 @@ from sklearn.metrics import davies_bouldin_score
 
 
 def _unpack_offset(offset):
-    '''Splits a shape's offset field into (spacing, vertical_shift, nominal_spacing).
-    Plain structures use a scalar spacing (nominal_spacing == spacing, no vertical shift).
-    perturb_structure (in structureLibrary.py) may replace it with a
-    (spacing, vertical_shift, nominal_spacing) triple: the shape is actually placed using
-    (spacing, vertical_shift), while the hinge/pivot point feeding into it is placed using
-    only nominal_spacing, relative to the *previous* shape's actual position -- i.e. the
-    hinge stays fixed to the previous shape regardless of this shape's own fabrication slop.'''
+    '''Splits a shape's offset field into (spacing, vertical_shift, nominal_spacing, hinge_offset).
+    Plain structures use a scalar spacing (nominal_spacing == spacing, no vertical shift, and the
+    hinge sits at the halfway point, nominal_spacing / 2, between this shape and the previous one).
+    perturb_structure (in structureLibrary.py) may replace it with a (spacing, vertical_shift,
+    nominal_spacing, hinge_offset) quadruple: the shape is actually placed using (spacing,
+    vertical_shift), while the hinge/pivot point feeding into it is placed using only hinge_offset,
+    relative to the *previous* shape's actual position -- i.e. the hinge stays fixed to the previous
+    shape (at a possibly asymmetric distance from it) regardless of this shape's own fabrication slop.'''
     if isinstance(offset, (tuple, list, np.ndarray)):
-        d, dy, d_nom = offset
-        return d, dy, d_nom
-    return offset, 0.0, offset
+        d, dy, d_nom, hinge_offset = offset
+        return d, dy, d_nom, hinge_offset
+    return offset, 0.0, offset, offset / 2
 
 
 def generate(shapes):
@@ -60,7 +61,7 @@ def generate(shapes):
     for i in range(len(shapes)):
         
         l = shapes[indexvec[i]][1] #Store the edge length of a cube as a single variable to be referenced for creating all shapes
-        d, dy, d_nom = _unpack_offset(shapes[indexvec[i]][2]) #Actual spacing/vertical shift used to place this shape, and the nominal spacing used to place the hinge feeding it
+        d, dy, _, hinge_offset = _unpack_offset(shapes[indexvec[i]][2]) #Actual spacing/vertical shift used to place this shape, and the (possibly asymmetric) offset from the previous shape used to place the hinge feeding it
         patches = shapes[indexvec[i]][4] #Store the patches dictionary
         patch_indexvec = ['patch ']*len(patches) #Create vector to hold dictionary indices
         patch_num.append(len(patches)) #append the number of patches to the patch list
@@ -69,7 +70,7 @@ def generate(shapes):
         if i > 0: #As long as we aren't on the first shape
             xi = xf_prev + d #this shape's actual origin: previous shape's actual right edge, plus this hinge's (possibly fabricated) spacing
             yi = yi_prev + dy #this shape's actual baseline, from any fabricated vertical hinge shift
-            hx = xf_prev + d_nom/2 #hinge/pivot stays fixed to the previous shape's actual position via the *nominal* spacing, regardless of this shape's own fabrication slop
+            hx = xf_prev + hinge_offset #hinge/pivot stays fixed to the previous shape's actual position via the *nominal* (possibly asymmetric) hinge offset, regardless of this shape's own fabrication slop
             hy = yi_prev + l/2 #hinge y-coordinate is halfway up the shape, from the previous shape's actual baseline
             if i == 1:
                 hinge_loc = np.array([hx, hy])[:,None] #make the hinge array a column vector for easy rotation
