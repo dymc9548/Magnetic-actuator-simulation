@@ -4,13 +4,46 @@ import shapely as sp
 from shapely.ops import polygonize
 import copy
 from visualization_functions import energy_math, count_shapes, rotate_once, check_overlap, shapeplots, update, generate
-from structureLibrary import perturb_structure
+from structureLibrary import perturb_structure, sample_hinge_limits
 from matplotlib.animation import FuncAnimation
 import os
 import shutil
 
 
-def sim_many(sims, method, patch_arr_init,shape_arr_init,linelist,hinge_vec_init, hinge_loc_init, std, patch_num, mask_arr, v_xmat, h_xmat, v_ymat, h_ymat, Ml_mat, max_iter, kBT=4.11e-21, tol=0, plot=False, animate=False, shapes=None, perturb_kwargs=None, rng=None):
+def _limit_angle(current_angle, angle, limits):
+    """Clamp a proposed hinge rotation so the hinge's absolute angle stays within its stop.
+
+    current_angle: the hinge's current absolute angle (hinge_vec[h], deg)
+    angle:         proposed change in degrees
+    limits:        (min, max) absolute-angle bounds for this hinge, or None for unconstrained
+
+    Returns the (possibly reduced) change; 0 if the hinge is already sitting at that stop.
+    """
+    if limits is None:
+        return angle
+    lo, hi = limits
+    return np.clip(current_angle + angle, lo, hi) - current_angle
+
+
+def _snap_into_limits(patch_arr, shape_arr, linelist, hinge_vec, hinge_loc, patch_num, hinge_limits):
+    """Bring any hinge that starts outside its cap back to the nearest allowed angle.
+
+    Fabrication rotation noise (perturb_structure's hinge_rotation) can seed a hinge outside an
+    absolute intentional band; this restores the invariant that hinge_vec stays within
+    hinge_limits before stepping begins. A no-op for random fabrication stops, which are always
+    measured from the initial angle and so already contain it.
+    """
+    if hinge_limits is None:
+        return patch_arr, shape_arr, hinge_vec, hinge_loc
+    for h in range(len(hinge_vec)):
+        corr = _limit_angle(hinge_vec[h], 0.0, hinge_limits[h])
+        if corr != 0:
+            patch_arr, shape_arr, hinge_vec, hinge_loc = rotate_once(
+                patch_arr, shape_arr, linelist, hinge_vec, h, hinge_loc, corr, patch_num)
+    return patch_arr, shape_arr, hinge_vec, hinge_loc
+
+
+def sim_many(sims, method, patch_arr_init,shape_arr_init,linelist,hinge_vec_init, hinge_loc_init, std, patch_num, mask_arr, v_xmat, h_xmat, v_ymat, h_ymat, Ml_mat, max_iter, kBT=4.11e-21, tol=0, plot=False, animate=False, shapes=None, perturb_kwargs=None, limit_kwargs=None, rng=None):
     """
     Simulate many times and store each simulation's hinge vector and final energy
 
@@ -43,16 +76,21 @@ def sim_many(sims, method, patch_arr_init,shape_arr_init,linelist,hinge_vec_init
             arguments in this case (used only to size final_hinges), but are otherwise ignored per-trial.
         perturb_kwargs: (dict, optional) keyword arguments forwarded to perturb_structure on every trial
             (e.g. patch_offset_std, hinge_radius, hinge_rotation_std). Ignored if shapes is None.
+        limit_kwargs: (dict, optional) keyword arguments forwarded to sample_hinge_limits on every trial
+            (intentional, stop_prob, stop_mean, stop_std) to cap how far individual hinges may rotate --
+            random one-sided fabrication stops and/or deliberate per-hinge inhibition. Redrawn per trial
+            like perturb_kwargs. If None (the default) hinges are unconstrained. Works whether or not
+            shapes is given; when shapes is None the limits are measured from hinge_vec_init.
         rng: (numpy.random.Generator, optional) shared source of randomness for the per-trial structure
-            perturbations, so a run is reproducible. A fresh default_rng() is used if omitted. Ignored if
-            shapes is None.
+            perturbations and hinge-limit sampling, so a run is reproducible. A fresh default_rng() is
+            used if omitted.
 
     Outputs:
         final_hinges: An Nxn array of hinge angle values, where N is the number of simulations and n is the number of hinges
         final_e: An N-dim vector of final energies for each simulation, where N is the number of simulations
         energies: An Nxn object of energies over time, where N is the number of simulations and n is the length of individual simulations (varies)
     """
-    if shapes is not None and rng is None:
+    if (shapes is not None or limit_kwargs) and rng is None:
         rng = np.random.default_rng()
     perturb_kwargs = perturb_kwargs or {}
 
@@ -96,14 +134,17 @@ def sim_many(sims, method, patch_arr_init,shape_arr_init,linelist,hinge_vec_init
         else:
             trial_patch_arr, trial_shape_arr, trial_linelist, trial_hinge_vec, trial_hinge_loc, trial_patch_num = patch_arr_init, shape_arr_init, linelist, hinge_vec_init, hinge_loc_init, patch_num
 
+        # per-trial hinge rotation caps (random fabrication stops and/or deliberate inhibition)
+        trial_hinge_limits = sample_hinge_limits(trial_hinge_vec, rng=rng, **limit_kwargs) if limit_kwargs else None
+
         if method == 'greedy descent':
-            patch_arr, shape_arr, hinge_vec, hinge_loc, current_energy, energy = simulate_greedyDescent(trial_patch_arr,trial_shape_arr,trial_linelist,trial_hinge_vec, trial_hinge_loc, std, trial_patch_num, mask_arr, v_xmat, h_xmat, v_ymat, h_ymat, Ml_mat, max_iter, tol=tol, animate=animate, sim_num=i, ani_folder=folder)
+            patch_arr, shape_arr, hinge_vec, hinge_loc, current_energy, energy = simulate_greedyDescent(trial_patch_arr,trial_shape_arr,trial_linelist,trial_hinge_vec, trial_hinge_loc, std, trial_patch_num, mask_arr, v_xmat, h_xmat, v_ymat, h_ymat, Ml_mat, max_iter, tol=tol, animate=animate, sim_num=i, ani_folder=folder, hinge_limits=trial_hinge_limits)
         elif method == 'monte carlo':
-            patch_arr, shape_arr, hinge_vec, hinge_loc, current_energy, energy = simulate_monteCarlo(trial_patch_arr,trial_shape_arr,trial_linelist,trial_hinge_vec, trial_hinge_loc, std, trial_patch_num, mask_arr, v_xmat, h_xmat, v_ymat, h_ymat, Ml_mat, max_iter, kBT=kBT, animate=animate, sim_num=i, ani_folder=folder)
+            patch_arr, shape_arr, hinge_vec, hinge_loc, current_energy, energy = simulate_monteCarlo(trial_patch_arr,trial_shape_arr,trial_linelist,trial_hinge_vec, trial_hinge_loc, std, trial_patch_num, mask_arr, v_xmat, h_xmat, v_ymat, h_ymat, Ml_mat, max_iter, kBT=kBT, animate=animate, sim_num=i, ani_folder=folder, hinge_limits=trial_hinge_limits)
         elif method == 'weighted sync':
-            patch_arr, shape_arr, hinge_vec, hinge_loc, current_energy, energy = simulate_weightedSync(trial_patch_arr,trial_shape_arr,trial_linelist,trial_hinge_vec, trial_hinge_loc, std, trial_patch_num, mask_arr, v_xmat, h_xmat, v_ymat, h_ymat, Ml_mat, max_iter, tol=tol, animate=animate, sim_num=i, ani_folder=folder)
+            patch_arr, shape_arr, hinge_vec, hinge_loc, current_energy, energy = simulate_weightedSync(trial_patch_arr,trial_shape_arr,trial_linelist,trial_hinge_vec, trial_hinge_loc, std, trial_patch_num, mask_arr, v_xmat, h_xmat, v_ymat, h_ymat, Ml_mat, max_iter, tol=tol, animate=animate, sim_num=i, ani_folder=folder, hinge_limits=trial_hinge_limits)
         elif method == 'hybrid':
-            patch_arr, shape_arr, hinge_vec, hinge_loc, current_energy, energy = simulate_hybrid(trial_patch_arr,trial_shape_arr,trial_linelist,trial_hinge_vec, trial_hinge_loc, std, trial_patch_num, mask_arr, v_xmat, h_xmat, v_ymat, h_ymat, Ml_mat, max_iter, tol=tol, animate=animate, sim_num=i, ani_folder=folder)
+            patch_arr, shape_arr, hinge_vec, hinge_loc, current_energy, energy = simulate_hybrid(trial_patch_arr,trial_shape_arr,trial_linelist,trial_hinge_vec, trial_hinge_loc, std, trial_patch_num, mask_arr, v_xmat, h_xmat, v_ymat, h_ymat, Ml_mat, max_iter, tol=tol, animate=animate, sim_num=i, ani_folder=folder, hinge_limits=trial_hinge_limits)
 
         for j in range(len(hinge_vec)): #loop through number of movable hinges
             final_hinges[i,j]= hinge_vec[j] #Place all values of the final hinge angles into their corresponding index in final_hinges
@@ -115,7 +156,7 @@ def sim_many(sims, method, patch_arr_init,shape_arr_init,linelist,hinge_vec_init
         
     return final_hinges, final_e, energies
 
-def simulate_greedyDescent(patch_arr_init,shape_arr_init,linelist,hinge_vec_init, hinge_loc_init, std, patch_num, mask_arr, v_xmat, h_xmat, v_ymat, h_ymat, Ml_mat, max_iter, tol=0, animate=False, sim_num=0, ani_folder='GreedyDescentAnimations', return_states=False):
+def simulate_greedyDescent(patch_arr_init,shape_arr_init,linelist,hinge_vec_init, hinge_loc_init, std, patch_num, mask_arr, v_xmat, h_xmat, v_ymat, h_ymat, Ml_mat, max_iter, tol=0, animate=False, sim_num=0, ani_folder='GreedyDescentAnimations', return_states=False, hinge_limits=None):
     """
     Simulate as follows: for each hinge, sample a random angle, then move the hinge by that angle in the favorable direction and calculate the energy change.
     Accept the move with the largest negative energy change, then repeat.
@@ -140,6 +181,9 @@ def simulate_greedyDescent(patch_arr_init,shape_arr_init,linelist,hinge_vec_init
         sim_num: (int) for saving animations by simulation number
         ani_folder: (str) location to save animations
         return_states: (bool) whether to also return the list of per-iteration states (for stitching into a combined animation)
+        hinge_limits: (num_hinges, 2) array of [min, max] absolute hinge angles (deg), or None. A
+            proposed rotation is clamped so hinge_vec[h] stays within its row; a hinge already at
+            its stop simply can't move that way. Build it with structureLibrary.sample_hinge_limits.
 
     Outputs:
         patch_arr: 2x(2n) array of x and y points that describe the lines of the final magentic patches
@@ -155,6 +199,9 @@ def simulate_greedyDescent(patch_arr_init,shape_arr_init,linelist,hinge_vec_init
     shape_arr = copy.deepcopy(shape_arr_init)
     hinge_vec = copy.deepcopy(hinge_vec_init)
     hinge_loc = copy.deepcopy(hinge_loc_init)
+
+    # pull any hinge that was seeded outside its cap back into range before stepping
+    patch_arr, shape_arr, hinge_vec, hinge_loc = _snap_into_limits(patch_arr, shape_arr, linelist, hinge_vec, hinge_loc, patch_num, hinge_limits)
 
     # calculate the pre-rotation energy and store number of hinges
     current_energy = energy_math(patch_arr, mask_arr, v_xmat, h_xmat, v_ymat, h_ymat, Ml_mat)
@@ -175,7 +222,13 @@ def simulate_greedyDescent(patch_arr_init,shape_arr_init,linelist,hinge_vec_init
             trial_angle = np.random.normal(0,std) #pull a trial angle from the Gaussian distribution
 
             for sign in [1,-1]: # test the angle in both directions
-                test_trial_angle = trial_angle*sign 
+                test_trial_angle = trial_angle*sign
+
+                if hinge_limits is not None: # clamp against this hinge's rotation cap
+                    test_trial_angle = _limit_angle(hinge_vec[h], test_trial_angle, hinge_limits[h])
+                    if test_trial_angle == 0: # hinge is already at its stop in this direction
+                        continue
+
                 trial_patch, trial_shape, trial_hinge, trial_hingeloc = rotate_once(patch_arr, shape_arr, linelist, hinge_vec, h, hinge_loc, test_trial_angle, patch_num) # rotate by the angle
                 overlap = check_overlap(trial_shape, polycount)
 
@@ -232,7 +285,7 @@ def simulate_greedyDescent(patch_arr_init,shape_arr_init,linelist,hinge_vec_init
     return patch_arr, shape_arr, hinge_vec, hinge_loc, current_energy, np.array(energy)
 
 
-def simulate_monteCarlo(patch_arr_init, shape_arr_init, linelist, hinge_vec_init, hinge_loc_init, std, patch_num, mask_arr, v_xmat, h_xmat, v_ymat, h_ymat, Ml_mat, max_iter, kBT=4.11e-21, animate=False, sim_num=0, ani_folder='MonteCarloAnimations'):
+def simulate_monteCarlo(patch_arr_init, shape_arr_init, linelist, hinge_vec_init, hinge_loc_init, std, patch_num, mask_arr, v_xmat, h_xmat, v_ymat, h_ymat, Ml_mat, max_iter, kBT=4.11e-21, animate=False, sim_num=0, ani_folder='MonteCarloAnimations', hinge_limits=None):
     """
     Simulate as follows: randomly pick a hinge, propose a random rotation, and accept/reject based on the Boltzmann distribution.
 
@@ -255,6 +308,9 @@ def simulate_monteCarlo(patch_arr_init, shape_arr_init, linelist, hinge_vec_init
         animate: (bool) whether or not to store each frame for animation
         sim_num: (int) for saving animations by simulation number
         ani_folder: (str) location to save animations
+        hinge_limits: (num_hinges, 2) array of [min, max] absolute hinge angles (deg), or None. A
+            proposed rotation is clamped so hinge_vec[h] stays within its row; a hinge already at
+            its stop simply can't move that way. Build it with structureLibrary.sample_hinge_limits.
 
     Outputs:
         patch_arr: 2x(2n) array of x and y points that describe the lines of the final magentic patches
@@ -268,6 +324,9 @@ def simulate_monteCarlo(patch_arr_init, shape_arr_init, linelist, hinge_vec_init
     shape_arr = copy.deepcopy(shape_arr_init)
     hinge_vec = copy.deepcopy(hinge_vec_init)
     hinge_loc = copy.deepcopy(hinge_loc_init)
+
+    # pull any hinge that was seeded outside its cap back into range before stepping
+    patch_arr, shape_arr, hinge_vec, hinge_loc = _snap_into_limits(patch_arr, shape_arr, linelist, hinge_vec, hinge_loc, patch_num, hinge_limits)
 
     # Store the current energy of the conformation
     current_energy = energy_math(patch_arr, mask_arr, v_xmat, h_xmat, v_ymat, h_ymat, Ml_mat)
@@ -288,6 +347,11 @@ def simulate_monteCarlo(patch_arr_init, shape_arr_init, linelist, hinge_vec_init
 
         # Propose random move
         trial_angle = np.random.normal(0, std)
+
+        if hinge_limits is not None: # clamp against this hinge's rotation cap
+            trial_angle = _limit_angle(hinge_vec[h], trial_angle, hinge_limits[h])
+            if trial_angle == 0: # hinge is already at its stop in this direction
+                continue
 
         # Rotate the hinge
         trial_patch, trial_shape, trial_hinge, trial_hingeloc = rotate_once(patch_arr, shape_arr,linelist, hinge_vec, h, hinge_loc, trial_angle, patch_num)
@@ -353,7 +417,7 @@ def simulate_monteCarlo(patch_arr_init, shape_arr_init, linelist, hinge_vec_init
     return patch_arr, shape_arr, hinge_vec, hinge_loc, current_energy, np.array(energy)
 
 
-def simulate_weightedSync(patch_arr_init, shape_arr_init, linelist, hinge_vec_init, hinge_loc_init, std, patch_num, mask_arr, v_xmat, h_xmat, v_ymat, h_ymat, Ml_mat, max_iter, tol=0, animate=False, sim_num=0, ani_folder='WeightedSyncAnimations', return_states=False):
+def simulate_weightedSync(patch_arr_init, shape_arr_init, linelist, hinge_vec_init, hinge_loc_init, std, patch_num, mask_arr, v_xmat, h_xmat, v_ymat, h_ymat, Ml_mat, max_iter, tol=0, animate=False, sim_num=0, ani_folder='WeightedSyncAnimations', return_states=False, hinge_limits=None):
     """
     Simulate as follows: sample a random angle, then test each hinge rotation by that angle in both directions, and store the most favorable energy change.
     Then, rotate all hinges simultaneously by a weighted amount (weighted by most favorable energy change). If overlap, reduce all hinge rotations by half and try again.
@@ -380,6 +444,9 @@ def simulate_weightedSync(patch_arr_init, shape_arr_init, linelist, hinge_vec_in
         sim_num: (int) for saving animations by simulation number
         ani_folder: (str) location to save animations
         return_states: (bool) whether to also return the list of per-iteration states (for stitching into a combined animation)
+        hinge_limits: (num_hinges, 2) array of [min, max] absolute hinge angles (deg), or None. The
+            combined per-step rotation vector is clamped elementwise so each hinge_vec[h] stays
+            within its row. Build it with structureLibrary.sample_hinge_limits.
 
     Outputs:
         patch_arr: 2x(2n) array of x and y points that describe the lines of the final magentic patches
@@ -395,6 +462,9 @@ def simulate_weightedSync(patch_arr_init, shape_arr_init, linelist, hinge_vec_in
     shape_arr = copy.deepcopy(shape_arr_init)
     hinge_vec = copy.deepcopy(hinge_vec_init)
     hinge_loc = copy.deepcopy(hinge_loc_init)
+
+    # pull any hinge that was seeded outside its cap back into range before stepping
+    patch_arr, shape_arr, hinge_vec, hinge_loc = _snap_into_limits(patch_arr, shape_arr, linelist, hinge_vec, hinge_loc, patch_num, hinge_limits)
 
     # calculate the current energy
     current_energy = energy_math(patch_arr, mask_arr, v_xmat, h_xmat, v_ymat, h_ymat, Ml_mat)
@@ -426,6 +496,11 @@ def simulate_weightedSync(patch_arr_init, shape_arr_init, linelist, hinge_vec_in
 
             for sign in [1, -1]: # for both directions
                 test_trial_angle = trial_angle * sign
+
+                if hinge_limits is not None: # score only the move this hinge can actually make
+                    test_trial_angle = _limit_angle(hinge_vec[h], test_trial_angle, hinge_limits[h])
+                    if test_trial_angle == 0: # capped in this direction, so not an available move
+                        continue
 
                 # rotate the shape
                 trial_patch, trial_shape, _, _ = rotate_once(patch_arr, shape_arr, linelist, hinge_vec, h, hinge_loc, test_trial_angle, patch_num)
@@ -472,6 +547,9 @@ def simulate_weightedSync(patch_arr_init, shape_arr_init, linelist, hinge_vec_in
 
         # construct simultaneous rotation
         theta_vec = trial_angle * weights * signs * scale_factor # angle array for rotation
+
+        if hinge_limits is not None: # clamp each hinge's move against its rotation cap
+            theta_vec = np.clip(hinge_vec + theta_vec, hinge_limits[:, 0], hinge_limits[:, 1]) - hinge_vec
 
         # parameters for keeping track of overlap failure
         success = False
@@ -555,7 +633,7 @@ def simulate_weightedSync(patch_arr_init, shape_arr_init, linelist, hinge_vec_in
     return patch_arr, shape_arr, hinge_vec, hinge_loc, current_energy, np.array(energy)
 
 
-def simulate_hybrid(patch_arr_init, shape_arr_init, linelist, hinge_vec_init, hinge_loc_init, std, patch_num, mask_arr, v_xmat, h_xmat, v_ymat, h_ymat, Ml_mat, max_iter, tol=0, animate=False, sim_num=0, ani_folder='HybridAnimations'):
+def simulate_hybrid(patch_arr_init, shape_arr_init, linelist, hinge_vec_init, hinge_loc_init, std, patch_num, mask_arr, v_xmat, h_xmat, v_ymat, h_ymat, Ml_mat, max_iter, tol=0, animate=False, sim_num=0, ani_folder='HybridAnimations', hinge_limits=None):
     """
     Simulate as follows: run weighted sync until it can no longer find a favorable synchronized move, then hand the
     resulting folded state to greedy descent to locally refine it to its nearest energy minimum.
@@ -579,6 +657,9 @@ def simulate_hybrid(patch_arr_init, shape_arr_init, linelist, hinge_vec_init, hi
         animate: (bool) whether or not to store each frame for animation
         sim_num: (int) for saving animations by simulation number
         ani_folder: (str) location to save animations
+        hinge_limits: (num_hinges, 2) array of [min, max] absolute hinge angles (deg), or None,
+            forwarded to both the weighted sync and greedy descent stages. Build it with
+            structureLibrary.sample_hinge_limits.
 
     Outputs:
         patch_arr: 2x(2n) array of x and y points that describe the lines of the final magentic patches
@@ -589,10 +670,10 @@ def simulate_hybrid(patch_arr_init, shape_arr_init, linelist, hinge_vec_init, hi
     """
 
     # run weighted sync until it converges (animation of this stage alone is suppressed; frames are stitched into one combined gif below)
-    patch_arr, shape_arr, hinge_vec, hinge_loc, current_energy, ws_energy, ws_states = simulate_weightedSync(patch_arr_init, shape_arr_init, linelist, hinge_vec_init, hinge_loc_init, std, patch_num, mask_arr, v_xmat, h_xmat, v_ymat, h_ymat, Ml_mat, max_iter, tol=tol, animate=False, sim_num=sim_num, ani_folder=ani_folder, return_states=True)
+    patch_arr, shape_arr, hinge_vec, hinge_loc, current_energy, ws_energy, ws_states = simulate_weightedSync(patch_arr_init, shape_arr_init, linelist, hinge_vec_init, hinge_loc_init, std, patch_num, mask_arr, v_xmat, h_xmat, v_ymat, h_ymat, Ml_mat, max_iter, tol=tol, animate=False, sim_num=sim_num, ani_folder=ani_folder, return_states=True, hinge_limits=hinge_limits)
 
     # refine the weighted sync result with greedy descent
-    patch_arr, shape_arr, hinge_vec, hinge_loc, current_energy, gd_energy, gd_states = simulate_greedyDescent(patch_arr, shape_arr, linelist, hinge_vec, hinge_loc, std, patch_num, mask_arr, v_xmat, h_xmat, v_ymat, h_ymat, Ml_mat, max_iter, tol=tol, animate=False, sim_num=sim_num, ani_folder=ani_folder, return_states=True)
+    patch_arr, shape_arr, hinge_vec, hinge_loc, current_energy, gd_energy, gd_states = simulate_greedyDescent(patch_arr, shape_arr, linelist, hinge_vec, hinge_loc, std, patch_num, mask_arr, v_xmat, h_xmat, v_ymat, h_ymat, Ml_mat, max_iter, tol=tol, animate=False, sim_num=sim_num, ani_folder=ani_folder, return_states=True, hinge_limits=hinge_limits)
 
     # stitch the two energy/state traces together, dropping the duplicate frame at the greedy descent handoff point
     energy = np.concatenate([ws_energy, gd_energy[1:]])

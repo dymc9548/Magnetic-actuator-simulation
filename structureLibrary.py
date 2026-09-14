@@ -520,3 +520,62 @@ def perturb_structure(shapes, patch_offset_std=0.0, patch_offset_mean=0.0,
                 perturbed[key][3] = rotation + rng.normal(hinge_rotation_mean, hinge_rotation_std)
 
     return perturbed
+
+
+def sample_hinge_limits(hinge_vec_init, intentional=None, stop_prob=0.0,
+                        stop_mean=0.0, stop_std=0.0, rng=None):
+    '''
+    Build a per-hinge [min, max] absolute-angle bound array (degrees, same convention as
+    hinge_vec: 180 = nominal flat), combining two independent sources:
+
+      - intentional inhibition: a dict you supply, applied exactly and overriding any random
+        stop on the same hinge. Use this to deliberately pin a hinge in an experiment.
+      - random fabrication stops: only a random subset of hinges (fraction stop_prob) get one.
+        Each such hinge is blocked on one randomly chosen side, a sampled distance from its
+        *initial* angle; the other side is left free. Models a hinge that, as fabricated, can't
+        travel its full range one way (and with a tight stop may end up stuck near where it
+        started).
+
+    Inputs:
+        hinge_vec_init: array of initial hinge angles (deg), e.g. the hinge_vec from generate().
+            Random stops are measured relative to each hinge's own initial angle, so initial-angle
+            noise from perturb_structure's hinge_rotation carries through into where the stop sits.
+        intentional: (dict, optional) {hinge_index: cap}, where cap is either
+            (min_angle, max_angle) -- absolute bounds in degrees, or
+            scalar s               -- shorthand for +/- s degrees about that hinge's initial angle.
+        stop_prob: (float) fraction of the hinges not set by intentional that get a random
+            one-sided fabrication stop. 0 (the default) disables random stops.
+        stop_mean, stop_std: (float, degrees) Gaussian for the allowed one-sided travel from the
+            initial angle before the stop. The sampled magnitude is clamped to >= 0.
+        rng: numpy.random.Generator, optional. A fresh default_rng() is used if omitted; pass a
+            seeded Generator (the same one used for perturb_structure) for reproducible runs.
+
+    Return:
+        (num_hinges, 2) float array of [min, max] absolute angles. Unconstrained hinges are
+        [-inf, +inf].
+    '''
+    if rng is None:
+        rng = np.random.default_rng()
+
+    hinge_vec_init = np.asarray(hinge_vec_init, dtype=float)
+    n = len(hinge_vec_init)
+    limits = np.tile(np.array([-np.inf, np.inf]), (n, 1))
+    intentional = intentional or {}
+
+    for h in range(n):
+        if h in intentional:
+            cap = intentional[h]
+            if np.isscalar(cap):
+                limits[h] = [hinge_vec_init[h] - cap, hinge_vec_init[h] + cap]
+            else:
+                limits[h] = cap
+            continue
+
+        if stop_prob > 0 and rng.random() < stop_prob:
+            travel = max(rng.normal(stop_mean, stop_std), 0.0)
+            if rng.random() < 0.5:
+                limits[h, 0] = hinge_vec_init[h] - travel  # block the - side
+            else:
+                limits[h, 1] = hinge_vec_init[h] + travel  # block the + side
+
+    return limits

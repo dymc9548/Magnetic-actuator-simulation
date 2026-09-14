@@ -803,8 +803,8 @@ def cluster_stats(data, clusternumber, clustercenters, clusterlabels, final_e, p
 
         # Plot histogram of cluster probabilities
         plt.bar(x_pos, cluster_prob, width=0.85, color=colors, edgecolor='black', linewidth=3) # collin does cluster_prob*1000
-        plt.ylabel('Folded State Frequency', fontsize=8)
-        plt.xlabel('Final Energy (kT)', fontsize=8)
+        plt.ylabel('Folded State Frequency', fontsize=20)
+        plt.xlabel('Final Energy (kT)', fontsize=20)
 
         # Add a color bar to indicate energy scale
         #sm = plt.cm.ScalarMappable(cmap=cmap, norm=norm)
@@ -813,6 +813,8 @@ def cluster_stats(data, clusternumber, clustercenters, clusterlabels, final_e, p
         sm = plt.cm.ScalarMappable(cmap=cmap, norm=norm)
         sm.set_array(energies)  # Associate the ScalarMappable with the energies array
         cbar = plt.colorbar(sm, ax=plt.gca(), label='Final Energy (kT)')  # Explicitly associate colorbar with the current axis
+        cbar.ax.tick_params(labelsize=14)
+        cbar.set_label('Final Energy (kT)',size=20)
 
         # Enhance plot aesthetics with borders
         for spine in plt.gca().spines.values():
@@ -820,6 +822,7 @@ def cluster_stats(data, clusternumber, clustercenters, clusterlabels, final_e, p
             spine.set_linewidth(2)
 
         plt.xticks([])  # Remove x-tick labels (optional)
+        plt.yticks(fontsize=14)
         plt.show(block=blocking)
 
     # Return sorted and processed cluster information
