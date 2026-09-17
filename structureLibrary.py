@@ -15,7 +15,8 @@ def structureLibrary(struc='original'):
         Name of the structure to build. One of: 'original', 'original_8', 'diamond',
         'six ring', 'zipper', 'two domain', 'alt corners', 'backbone',
         'end-middle', 'sym frustration', 'three domain', 'alt dipole',
-        'dumbbell', 'greedy trap'. Defaults to 'original'.
+        'dumbbell', 'greedy trap', 'spiral trap', 'short trap', 'stutter trap'.
+        Defaults to 'original'.
 
     Returns
     -------
@@ -418,8 +419,98 @@ def structureLibrary(struc='original'):
                         {'patch 1':['bottom left',4,0]}]
         }
 
+    # 7-shape chain, every shape carries a single 8-long patch centered on its edge (offset 1 from
+    # each corner, since 1 + 8 + 1 = the shape's own size of 10), alternating top right/bottom left
+    # so every hinge has the same handedness (no blanks to interrupt it). Both methods mostly close
+    # the full 7-membered loop, but greedy descent's single-hinge commitments settle into 5 distinct
+    # final populations (dominant one the deep loop, the rest shallower partial folds), while
+    # weighted sync's synchronized moves settle into a different mix of 4 populations skewed toward
+    # its own, slightly shallower version of the loop -- verified via KMeans clustering on final
+    # hinge angles (60 trials/method): GD and WS land in differently distributed, differently
+    # energied populations even though both usually end up loop-like.
+    elif struc == 'spiral trap':
+        shapes = {
+        'shape 1':['s',10,0,0,
+                {'patch 1':['top right',8,1]}],
+
+        'shape 2':['s',10,6,0,
+                {'patch 1':['bottom left',8,1]}],
+
+        'shape 3':['s',10,6,0,
+                {'patch 1':['top right',8,1]}],
+
+        'shape 4':['s',10,6,0,
+                {'patch 1':['bottom left',8,1]}],
+
+        'shape 5':['s',10,6,0,
+                {'patch 1':['top right',8,1]}],
+
+        'shape 6':['s',10,6,0,
+                {'patch 1':['bottom left',8,1]}],
+
+        'shape 7':['s',10,6,0,
+                {'patch 1':['top right',8,1]}]
+        }
+
+    # 7-shape chain with the same centered 8-long/1-offset patches as 'spiral trap', but the
+    # top-right/bottom-left pair only recurs after 3 blank (patchless) spacer shapes instead of
+    # every shape. That longer floppy run between the two patched pairs is what makes the
+    # difference: weighted sync's synchronized moves reliably stall out fully extended (one
+    # population, verified all 60/60 trials at the same final energy), while greedy descent's
+    # single-hinge commitments are a near coin flip between that same extended state and ratcheting
+    # all the way around into a tight closed loop roughly 20x lower in energy -- the reverse of the
+    # usual "greedy gets trapped" story, since here it's WS that consistently misses the lower-energy
+    # fold.
+    elif struc == 'short trap':
+        shapes = {
+        'shape 1':['s',10,0,0,
+                {'patch 1':['top right',8,1]}],
+
+        'shape 2':['s',10,6,0,
+                {'patch 1':['bottom left',8,1]}],
+
+        'shape 3':['s',10,6,0,{}],
+
+        'shape 4':['s',10,6,0,{}],
+
+        'shape 5':['s',10,6,0,{}],
+
+        'shape 6':['s',10,6,0,
+                {'patch 1':['top right',8,1]}],
+
+        'shape 7':['s',10,6,0,
+                {'patch 1':['bottom left',8,1]}]
+        }
+
+    # 7-shape chain with the same centered 8-long/1-offset patches, but now only 3 shapes carry a
+    # patch at all (shape 1, shape 5, shape 7 -- top right/bottom left/top right), separated by
+    # blank runs of different lengths so the two possible pairings compete rather than one obvious
+    # pair dominating. Weighted sync's synchronized moves settle into one dominant population
+    # (57/60 trials); greedy descent's single-hinge commitments split more evenly across 3
+    # populations, including reaching the deepest one roughly 6x more often than WS does -- so this
+    # is the structure to reach for when the goal is more than a clean two-way split.
+    elif struc == 'stutter trap':
+        shapes = {
+        'shape 1':['s',10,0,0,
+                {'patch 1':['top right',8,1]}],
+
+        'shape 2':['s',10,6,0,{}],
+
+        'shape 3':['s',10,6,0,{}],
+
+        'shape 4':['s',10,6,0,{}],
+
+        'shape 5':['s',10,6,0,
+                {'patch 1':['bottom left',8,1]}],
+
+        'shape 6':['s',10,6,0,{}],
+
+        'shape 7':['s',10,6,0,
+                {'patch 1':['top right',8,1]}]
+        }
+
     # elif struc == :
-    
+
     # elif struc == :
 
     return shapes
